@@ -152,14 +152,23 @@ async function renderTasks(el) {
 async function loadTasks() {
   try {
     const d = await API.getTasks();
-    const rows = d.tasks.map(t => `<tr>
-      <td><div style="font-weight:600">${t.title}</div><div class="text-muted" style="font-size:11px">${t.description || ''}</div></td>
-      <td>${badge(t.priority)}</td>
-      <td>${badge(t.status)}</td>
-      <td><div class="progress-bar"><div class="progress-fill" style="width:${t.progress}%"></div></div><div style="font-size:11px;margin-top:3px">${t.progress}%</div></td>
-      <td>${fmtDate(t.due_date)}</td>
-      <td><button class="btn btn-sm btn-outline" onclick="updateTaskModal(${t.id},'${t.status}',${t.progress})">Update</button></td>
-    </tr>`).join('');
+    const rows = d.tasks.map(t => {
+      const isCompleted = t.status === 'completed';
+      const deleteBtn = isCompleted
+        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);margin-left:6px" onclick="deleteTask(${t.id})" title="Delete completed task"><i class="fa-solid fa-trash"></i></button>`
+        : '';
+      return `<tr style="${isCompleted ? 'opacity:0.65' : ''}">  
+        <td><div style="font-weight:600">${t.title}</div><div class="text-muted" style="font-size:11px">${t.description || ''}</div></td>
+        <td>${badge(t.priority)}</td>
+        <td>${badge(t.status)}</td>
+        <td><div class="progress-bar"><div class="progress-fill" style="width:${t.progress}%"></div></div><div style="font-size:11px;margin-top:3px">${t.progress}%</div></td>
+        <td>${fmtDate(t.due_date)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="updateTaskModal(${t.id},'${t.status}',${t.progress})">Update</button>
+          ${deleteBtn}
+        </td>
+      </tr>`;
+    }).join('');
     document.getElementById('task-table').innerHTML = `<table><thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Progress</th><th>Due</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-muted" style="padding:24px">No tasks assigned</td></tr>'}</tbody></table>`;
   } catch (e) { toast(e.message, 'error'); }
 }
@@ -192,8 +201,22 @@ async function renderTickets(el) {
 async function loadTickets() {
   try {
     const d = await API.getTickets();
-    const rows = d.tickets.map(t => `<tr><td style="font-weight:600">${t.ticket_number}</td><td>${badge(t.category)}</td><td>${t.subject}</td><td>${badge(t.priority)}</td><td>${badge(t.status)}</td><td>${fmtDate(t.created_at)}</td></tr>`).join('');
-    document.getElementById('ticket-table').innerHTML = `<table><thead><tr><th>#</th><th>Category</th><th>Subject</th><th>Priority</th><th>Status</th><th>Created</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-muted" style="padding:24px">No tickets raised</td></tr>'}</tbody></table>`;
+    const rows = d.tickets.map(t => {
+      const isDone = t.status === 'resolved' || t.status === 'closed';
+      const deleteBtn = isDone
+        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);margin-left:6px" onclick="deleteTicket(${t.id})" title="Delete resolved ticket"><i class="fa-solid fa-trash"></i></button>`
+        : '';
+      return `<tr style="${isDone ? 'opacity:0.65' : ''}">
+        <td style="font-weight:600">${t.ticket_number}</td>
+        <td>${badge(t.category)}</td>
+        <td>${t.subject}</td>
+        <td>${badge(t.priority)}</td>
+        <td>${badge(t.status)}</td>
+        <td>${fmtDate(t.created_at)}</td>
+        <td>${deleteBtn}</td>
+      </tr>`;
+    }).join('');
+    document.getElementById('ticket-table').innerHTML = `<table><thead><tr><th>#</th><th>Category</th><th>Subject</th><th>Priority</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">No tickets raised</td></tr>'}</tbody></table>`;
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -214,4 +237,22 @@ async function submitTicket() {
   if (!body.subject || !body.description) { toast('Please fill all fields', 'warning'); return; }
   try { await API.createTicket(body); closeModal(); toast('Ticket submitted!', 'success'); await loadTickets(); }
   catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteTicket(id) {
+  if (!confirm('Delete this resolved ticket? This cannot be undone.')) return;
+  try {
+    await API.deleteTicket(id);
+    toast('Ticket deleted', 'success');
+    await loadTickets();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteTask(id) {
+  if (!confirm('Delete this completed task? This cannot be undone.')) return;
+  try {
+    await API.deleteTask(id);
+    toast('Task deleted', 'success');
+    await loadTasks();
+  } catch (e) { toast(e.message, 'error'); }
 }

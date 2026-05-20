@@ -217,8 +217,32 @@ def get_tickets():
     tickets = Ticket.query.filter_by(employee_id=g.current_user.id).order_by(Ticket.created_at.desc()).all()
     return jsonify({'tickets': [t.to_dict() for t in tickets]}), 200
 
+@employee_bp.route('/ticket/<int:ticket_id>', methods=['DELETE'])
+@token_required
+def delete_ticket(ticket_id):
+    ticket = Ticket.query.filter_by(id=ticket_id, employee_id=g.current_user.id).first()
+    if not ticket:
+        return jsonify({'error': 'Ticket not found'}), 404
+    if ticket.status not in ('resolved', 'closed'):
+        return jsonify({'error': 'Only resolved or closed tickets can be deleted'}), 400
+    db.session.delete(ticket)
+    db.session.commit()
+    return jsonify({'message': 'Ticket deleted successfully'}), 200
 
-# Notifications
+
+@employee_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
+@token_required
+def delete_task(task_id):
+    task = Task.query.filter_by(id=task_id, assigned_to=g.current_user.id).first()
+    if not task:
+        return jsonify({'error': 'Task not found'}), 404
+    if task.status != 'completed':
+        return jsonify({'error': 'Only completed tasks can be deleted'}), 400
+    db.session.delete(task)
+    db.session.commit()
+    return jsonify({'message': 'Task deleted successfully'}), 200
+
+
 @employee_bp.route('/notifications', methods=['GET'])
 @token_required
 def get_notifications():
@@ -353,6 +377,28 @@ def delete_employee(emp_id):
     emp.is_active = False
     db.session.commit()
     return jsonify({'message': 'Employee deactivated'}), 200
+
+
+@admin_bp.route('/tickets/<int:ticket_id>', methods=['DELETE'])
+@admin_required
+def delete_ticket_admin(ticket_id):
+    ticket = Ticket.query.get_or_404(ticket_id)
+    if ticket.status not in ('resolved', 'closed'):
+        return jsonify({'error': 'Only resolved or closed tickets can be deleted'}), 400
+    db.session.delete(ticket)
+    db.session.commit()
+    return jsonify({'message': 'Ticket deleted'}), 200
+
+
+@admin_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
+@admin_required
+def delete_task_admin(task_id):
+    task = Task.query.get_or_404(task_id)
+    if task.status != 'completed':
+        return jsonify({'error': 'Only completed tasks can be deleted'}), 400
+    db.session.delete(task)
+    db.session.commit()
+    return jsonify({'message': 'Task deleted'}), 200
 
 
 # Leave management
