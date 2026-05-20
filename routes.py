@@ -507,8 +507,8 @@ def chat_message():
     db.session.add(user_msg)
     db.session.flush()
 
-    # Get AI response
-    result = engine.chat(message, g.current_user, history_dicts, db)
+    # Get AI response (pass session_id for state machine)
+    result = engine.chat(message, g.current_user, history_dicts, db, session_id=session_id)
 
     # Save assistant response
     bot_msg = ChatHistory(
