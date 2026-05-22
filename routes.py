@@ -1,6 +1,5 @@
 import os
 import uuid
-import json
 from datetime import datetime, date, timedelta
 from flask import Blueprint, request, jsonify, g
 from models import db, Employee, Attendance, Leave, Task, Ticket, ChatHistory, Notification
@@ -27,15 +26,12 @@ def login():
         return jsonify({'error': 'Invalid credentials'}), 401
     if not emp.is_active:
         return jsonify({'error': 'Account deactivated. Contact admin.'}), 403
-    token = generate_token(emp.id, emp.role)
-    return jsonify({'token': token, 'user': emp.to_dict()}), 200
-
+    return jsonify({'token': generate_token(emp.id, emp.role), 'user': emp.to_dict()}), 200
 
 @auth_bp.route('/me', methods=['GET'])
 @token_required
 def me():
     return jsonify(g.current_user.to_dict()), 200
-
 
 @auth_bp.route('/change-password', methods=['PUT'])
 @token_required
@@ -55,25 +51,17 @@ def change_password():
 # EMPLOYEE ROUTES
 # ─────────────────────────────────────────────
 
-@employee_bp.route('/profile', methods=['GET'])
+@employee_bp.route('/profile', methods=['GET', 'PUT'])
 @token_required
-def get_profile():
-    return jsonify(g.current_user.to_dict()), 200
+def profile():
+    if request.method == 'PUT':
+        data = request.get_json()
+        for field in ['name', 'phone', 'designation', 'department']:
+            if field in data:
+                setattr(g.current_user, field, data[field])
+        db.session.commit()
+    return jsonify({'message': 'Profile updated', 'user': g.current_user.to_dict()} if request.method == 'PUT' else g.current_user.to_dict()), 200
 
-
-@employee_bp.route('/profile', methods=['PUT'])
-@token_required
-def update_profile():
-    data = request.get_json()
-    allowed = ['name', 'phone', 'designation', 'department']
-    for field in allowed:
-        if field in data:
-            setattr(g.current_user, field, data[field])
-    db.session.commit()
-    return jsonify({'message': 'Profile updated', 'user': g.current_user.to_dict()}), 200
-
-
-# Attendance
 @employee_bp.route('/attendance/checkin', methods=['POST'])
 @token_required
 def check_in():
@@ -85,11 +73,9 @@ def check_in():
         existing.check_in = datetime.utcnow()
         existing.status = 'present'
     else:
-        att = Attendance(employee_id=g.current_user.id, date=today, check_in=datetime.utcnow(), status='present')
-        db.session.add(att)
+        db.session.add(Attendance(employee_id=g.current_user.id, date=today, check_in=datetime.utcnow(), status='present'))
     db.session.commit()
     return jsonify({'message': 'Check-in recorded', 'time': datetime.utcnow().isoformat()}), 200
-
 
 @employee_bp.route('/attendance/checkout', methods=['POST'])
 @token_required
@@ -101,11 +87,9 @@ def check_out():
     if att.check_out:
         return jsonify({'error': 'Already checked out today'}), 400
     att.check_out = datetime.utcnow()
-    delta = att.check_out - att.check_in
-    att.hours_worked = round(delta.total_seconds() / 3600, 2)
+    att.hours_worked = round((att.check_out - att.check_in).total_seconds() / 3600, 2)
     db.session.commit()
     return jsonify({'message': 'Check-out recorded', 'hours_worked': att.hours_worked}), 200
-
 
 @employee_bp.route('/attendance', methods=['GET'])
 @token_required
@@ -123,8 +107,6 @@ def get_attendance():
         'today': today_rec.to_dict() if today_rec else None
     }), 200
 
-
-# Leaves
 @employee_bp.route('/leave/apply', methods=['POST'])
 @token_required
 def apply_leave():
@@ -145,13 +127,10 @@ def apply_leave():
         via_chatbot=data.get('via_chatbot', False)
     )
     db.session.add(leave)
-    admins = Employee.query.filter_by(role='admin').all()
-    for admin in admins:
-        add_notification(db, admin.id, 'New Leave Request',
-                         f'{g.current_user.name} applied for {days} day(s) of leave.', 'info')
+    for admin in Employee.query.filter_by(role='admin').all():
+        add_notification(db, admin.id, 'New Leave Request', f'{g.current_user.name} applied for {days} day(s) of leave.', 'info')
     db.session.commit()
     return jsonify({'message': 'Leave applied successfully', 'leave': leave.to_dict()}), 201
-
 
 @employee_bp.route('/leave', methods=['GET'])
 @token_required
@@ -159,21 +138,25 @@ def get_leaves():
     leaves = Leave.query.filter_by(employee_id=g.current_user.id).order_by(Leave.applied_on.desc()).all()
     return jsonify({'leaves': [l.to_dict() for l in leaves]}), 200
 
-
-# Tasks
 @employee_bp.route('/tasks', methods=['GET'])
 @token_required
 def get_tasks():
     tasks = Task.query.filter_by(assigned_to=g.current_user.id).order_by(Task.created_at.desc()).all()
     return jsonify({'tasks': [t.to_dict() for t in tasks]}), 200
 
-
-@employee_bp.route('/tasks/<int:task_id>', methods=['PUT'])
+@employee_bp.route('/tasks/<int:task_id>', methods=['PUT', 'DELETE'])
 @token_required
-def update_task(task_id):
+def modify_task(task_id):
     task = Task.query.filter_by(id=task_id, assigned_to=g.current_user.id).first()
     if not task:
         return jsonify({'error': 'Task not found'}), 404
+    if request.method == 'DELETE':
+        if task.status != 'completed':
+            return jsonify({'error': 'Only completed tasks can be deleted'}), 400
+        db.session.delete(task)
+        db.session.commit()
+        return jsonify({'message': 'Task deleted successfully'}), 200
+    
     data = request.get_json()
     if 'status' in data:
         task.status = data['status']
@@ -186,34 +169,27 @@ def update_task(task_id):
     db.session.commit()
     return jsonify({'message': 'Task updated', 'task': task.to_dict()}), 200
 
-
-# Tickets
-@employee_bp.route('/ticket', methods=['POST'])
+@employee_bp.route('/ticket', methods=['POST', 'GET'])
 @token_required
-def create_ticket():
-    data = request.get_json()
-    ticket_num = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:4].upper()}"
-    ticket = Ticket(
-        ticket_number=ticket_num,
-        employee_id=g.current_user.id,
-        category=data.get('category', 'IT'),
-        subject=data.get('subject', ''),
-        description=data.get('description', ''),
-        priority=data.get('priority', 'medium'),
-        via_chatbot=data.get('via_chatbot', False)
-    )
-    db.session.add(ticket)
-    admins = Employee.query.filter_by(role='admin').all()
-    for admin in admins:
-        add_notification(db, admin.id, 'New Helpdesk Ticket',
-                         f'{g.current_user.name} raised a {ticket.priority} priority ticket.', 'warning')
-    db.session.commit()
-    return jsonify({'message': 'Ticket created', 'ticket': ticket.to_dict()}), 201
-
-
-@employee_bp.route('/ticket', methods=['GET'])
-@token_required
-def get_tickets():
+def manage_tickets():
+    if request.method == 'POST':
+        data = request.get_json()
+        ticket_num = f"TKT-{datetime.utcnow().strftime('%Y%m%d')}-{str(uuid.uuid4())[:4].upper()}"
+        ticket = Ticket(
+            ticket_number=ticket_num,
+            employee_id=g.current_user.id,
+            category=data.get('category', 'IT'),
+            subject=data.get('subject', ''),
+            description=data.get('description', ''),
+            priority=data.get('priority', 'medium'),
+            via_chatbot=data.get('via_chatbot', False)
+        )
+        db.session.add(ticket)
+        for admin in Employee.query.filter_by(role='admin').all():
+            add_notification(db, admin.id, 'New Helpdesk Ticket', f'{g.current_user.name} raised a {ticket.priority} priority ticket.', 'warning')
+        db.session.commit()
+        return jsonify({'message': 'Ticket created', 'ticket': ticket.to_dict()}), 201
+    
     tickets = Ticket.query.filter_by(employee_id=g.current_user.id).order_by(Ticket.created_at.desc()).all()
     return jsonify({'tickets': [t.to_dict() for t in tickets]}), 200
 
@@ -229,63 +205,38 @@ def delete_ticket(ticket_id):
     db.session.commit()
     return jsonify({'message': 'Ticket deleted successfully'}), 200
 
-
-@employee_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
-@token_required
-def delete_task(task_id):
-    task = Task.query.filter_by(id=task_id, assigned_to=g.current_user.id).first()
-    if not task:
-        return jsonify({'error': 'Task not found'}), 404
-    if task.status != 'completed':
-        return jsonify({'error': 'Only completed tasks can be deleted'}), 400
-    db.session.delete(task)
-    db.session.commit()
-    return jsonify({'message': 'Task deleted successfully'}), 200
-
-
 @employee_bp.route('/notifications', methods=['GET'])
 @token_required
 def get_notifications():
-    notes = Notification.query.filter_by(employee_id=g.current_user.id)\
-        .order_by(Notification.created_at.desc()).limit(20).all()
+    notes = Notification.query.filter_by(employee_id=g.current_user.id).order_by(Notification.created_at.desc()).limit(20).all()
     unread = Notification.query.filter_by(employee_id=g.current_user.id, is_read=False).count()
     return jsonify({'notifications': [n.to_dict() for n in notes], 'unread_count': unread}), 200
-
 
 @employee_bp.route('/notifications/<int:nid>/read', methods=['PUT'])
 @token_required
 def mark_read(nid):
-    n = Notification.query.filter_by(id=nid, employee_id=g.current_user.id).first()
-    if n:
-        n.is_read = True
-        db.session.commit()
+    Notification.query.filter_by(id=nid, employee_id=g.current_user.id).update({'is_read': True})
+    db.session.commit()
     return jsonify({'message': 'Marked as read'}), 200
-
 
 @employee_bp.route('/notifications/read-all', methods=['PUT'])
 @token_required
 def mark_all_read():
-    Notification.query.filter_by(employee_id=g.current_user.id, is_read=False)\
-        .update({'is_read': True})
+    Notification.query.filter_by(employee_id=g.current_user.id, is_read=False).update({'is_read': True})
     db.session.commit()
     return jsonify({'message': 'All notifications marked as read'}), 200
-
 
 @employee_bp.route('/dashboard', methods=['GET'])
 @token_required
 def emp_dashboard():
-    today = date.today()
-    att = Attendance.query.filter_by(employee_id=g.current_user.id, date=today).first()
-    pending_leaves = Leave.query.filter_by(employee_id=g.current_user.id, status='pending').count()
-    my_tasks = Task.query.filter_by(assigned_to=g.current_user.id, status='pending').count()
-    open_tickets = Ticket.query.filter_by(employee_id=g.current_user.id, status='open').count()
-    unread = Notification.query.filter_by(employee_id=g.current_user.id, is_read=False).count()
+    uid = g.current_user.id
+    att = Attendance.query.filter_by(employee_id=uid, date=date.today()).first()
     return jsonify({
         'attendance_today': att.to_dict() if att else None,
-        'pending_leaves': pending_leaves,
-        'my_tasks': my_tasks,
-        'open_tickets': open_tickets,
-        'unread_notifications': unread,
+        'pending_leaves': Leave.query.filter_by(employee_id=uid, status='pending').count(),
+        'my_tasks': Task.query.filter_by(assigned_to=uid, status='pending').count(),
+        'open_tickets': Ticket.query.filter_by(employee_id=uid, status='open').count(),
+        'unread_notifications': Notification.query.filter_by(employee_id=uid, is_read=False).count(),
         'leave_balance': g.current_user.leave_balance
     }), 200
 
@@ -303,7 +254,6 @@ def admin_dashboard():
     open_tickets = Ticket.query.filter_by(status='open').count()
     pending_tasks = Task.query.filter_by(status='pending').count()
 
-    # Leave stats this month
     month_leaves = Leave.query.filter(
         db.extract('month', Leave.applied_on) == today.month,
         db.extract('year', Leave.applied_on) == today.year
@@ -311,12 +261,9 @@ def admin_dashboard():
     approved = sum(1 for l in month_leaves if l.status == 'approved')
     rejected = sum(1 for l in month_leaves if l.status == 'rejected')
 
-    # Attendance chart data (last 7 days)
-    att_chart = []
-    for i in range(6, -1, -1):
-        d = today - timedelta(days=i)
-        count = Attendance.query.filter_by(date=d, status='present').count()
-        att_chart.append({'date': d.isoformat(), 'count': count})
+    att_chart = [{'date': (today - timedelta(days=i)).isoformat(),
+                  'count': Attendance.query.filter_by(date=today - timedelta(days=i), status='present').count()}
+                 for i in range(6, -1, -1)]
 
     return jsonify({
         'total_employees': total_emp,
@@ -328,56 +275,46 @@ def admin_dashboard():
         'attendance_chart': att_chart
     }), 200
 
-
-@admin_bp.route('/employees', methods=['GET'])
+@admin_bp.route('/employees', methods=['GET', 'POST'])
 @admin_required
-def get_employees():
+def manage_employees():
+    if request.method == 'POST':
+        data = request.get_json()
+        if Employee.query.filter_by(email=data['email'].lower()).first():
+            return jsonify({'error': 'Email already registered'}), 400
+        count = Employee.query.count()
+        emp = Employee(
+            employee_id=f"EMP{str(count + 1).zfill(3)}",
+            name=data['name'],
+            email=data['email'].lower(),
+            department=data.get('department', 'General'),
+            designation=data.get('designation', 'Employee'),
+            phone=data.get('phone', ''),
+            role=data.get('role', 'employee')
+        )
+        emp.set_password(data.get('password', 'Welcome@123'))
+        db.session.add(emp)
+        db.session.commit()
+        return jsonify({'message': 'Employee created', 'employee': emp.to_dict()}), 201
+
     employees = Employee.query.filter_by(role='employee').order_by(Employee.name).all()
     return jsonify({'employees': [e.to_dict() for e in employees]}), 200
 
-
-@admin_bp.route('/employees', methods=['POST'])
+@admin_bp.route('/employees/<int:emp_id>', methods=['PUT', 'DELETE'])
 @admin_required
-def create_employee():
-    data = request.get_json()
-    if Employee.query.filter_by(email=data['email'].lower()).first():
-        return jsonify({'error': 'Email already registered'}), 400
-    count = Employee.query.count()
-    emp = Employee(
-        employee_id=f"EMP{str(count + 1).zfill(3)}",
-        name=data['name'],
-        email=data['email'].lower(),
-        department=data.get('department', 'General'),
-        designation=data.get('designation', 'Employee'),
-        phone=data.get('phone', ''),
-        role=data.get('role', 'employee')
-    )
-    emp.set_password(data.get('password', 'Welcome@123'))
-    db.session.add(emp)
-    db.session.commit()
-    return jsonify({'message': 'Employee created', 'employee': emp.to_dict()}), 201
-
-
-@admin_bp.route('/employees/<int:emp_id>', methods=['PUT'])
-@admin_required
-def update_employee(emp_id):
+def modify_employee(emp_id):
     emp = Employee.query.get_or_404(emp_id)
+    if request.method == 'DELETE':
+        emp.is_active = False
+        db.session.commit()
+        return jsonify({'message': 'Employee deactivated'}), 200
+    
     data = request.get_json()
     for field in ['name', 'department', 'designation', 'phone', 'is_active', 'leave_balance']:
         if field in data:
             setattr(emp, field, data[field])
     db.session.commit()
     return jsonify({'message': 'Employee updated', 'employee': emp.to_dict()}), 200
-
-
-@admin_bp.route('/employees/<int:emp_id>', methods=['DELETE'])
-@admin_required
-def delete_employee(emp_id):
-    emp = Employee.query.get_or_404(emp_id)
-    emp.is_active = False
-    db.session.commit()
-    return jsonify({'message': 'Employee deactivated'}), 200
-
 
 @admin_bp.route('/tickets/<int:ticket_id>', methods=['DELETE'])
 @admin_required
@@ -389,7 +326,6 @@ def delete_ticket_admin(ticket_id):
     db.session.commit()
     return jsonify({'message': 'Ticket deleted'}), 200
 
-
 @admin_bp.route('/tasks/<int:task_id>', methods=['DELETE'])
 @admin_required
 def delete_task_admin(task_id):
@@ -400,24 +336,21 @@ def delete_task_admin(task_id):
     db.session.commit()
     return jsonify({'message': 'Task deleted'}), 200
 
-
-# Leave management
 @admin_bp.route('/leaves', methods=['GET'])
 @admin_required
 def get_all_leaves():
-    status = request.args.get('status', None)
+    status = request.args.get('status')
     q = Leave.query.order_by(Leave.applied_on.desc())
     if status:
         q = q.filter_by(status=status)
     return jsonify({'leaves': [l.to_dict() for l in q.all()]}), 200
-
 
 @admin_bp.route('/leaves/<int:leave_id>/review', methods=['PUT'])
 @admin_required
 def review_leave(leave_id):
     leave = Leave.query.get_or_404(leave_id)
     data = request.get_json()
-    action = data.get('action')  # 'approve' or 'reject'
+    action = data.get('action')
     if action not in ('approve', 'reject'):
         return jsonify({'error': 'Action must be approve or reject'}), 400
     leave.status = 'approved' if action == 'approve' else 'rejected'
@@ -428,55 +361,41 @@ def review_leave(leave_id):
         emp = Employee.query.get(leave.employee_id)
         if emp:
             emp.leave_balance = max(0, emp.leave_balance - leave.days)
-        add_notification(db, leave.employee_id, 'Leave Approved! ✅',
-                         f'Your {leave.leave_type} leave from {leave.from_date} to {leave.to_date} has been approved.', 'success')
+        add_notification(db, leave.employee_id, 'Leave Approved! ✅', f'Your {leave.leave_type} leave from {leave.from_date} to {leave.to_date} has been approved.', 'success')
     else:
-        add_notification(db, leave.employee_id, 'Leave Rejected ❌',
-                         f'Your leave request has been rejected. Reason: {leave.admin_comment}', 'danger')
+        add_notification(db, leave.employee_id, 'Leave Rejected ❌', f'Your leave request has been rejected. Reason: {leave.admin_comment}', 'danger')
     db.session.commit()
     return jsonify({'message': f'Leave {leave.status}', 'leave': leave.to_dict()}), 200
 
-
-# Attendance
 @admin_bp.route('/attendance', methods=['GET'])
 @admin_required
 def get_all_attendance():
-    target_date = request.args.get('date', date.today().isoformat())
     try:
-        d = datetime.strptime(target_date, '%Y-%m-%d').date()
+        d = datetime.strptime(request.args.get('date', ''), '%Y-%m-%d').date()
     except ValueError:
         d = date.today()
-    records = Attendance.query.filter_by(date=d).all()
-    return jsonify({'date': d.isoformat(), 'records': [r.to_dict() for r in records]}), 200
+    return jsonify({'date': d.isoformat(), 'records': [r.to_dict() for r in Attendance.query.filter_by(date=d).all()]}), 200
 
-
-# Tasks
-@admin_bp.route('/tasks', methods=['GET'])
+@admin_bp.route('/tasks', methods=['GET', 'POST'])
 @admin_required
-def get_all_tasks():
-    tasks = Task.query.order_by(Task.created_at.desc()).all()
-    return jsonify({'tasks': [t.to_dict() for t in tasks]}), 200
+def manage_tasks_admin():
+    if request.method == 'POST':
+        data = request.get_json()
+        task = Task(
+            title=data['title'],
+            description=data.get('description', ''),
+            assigned_to=data.get('assigned_to'),
+            assigned_by=g.current_user.id,
+            priority=data.get('priority', 'medium'),
+            due_date=datetime.strptime(data['due_date'], '%Y-%m-%d').date() if data.get('due_date') else None
+        )
+        db.session.add(task)
+        if task.assigned_to:
+            add_notification(db, task.assigned_to, 'New Task Assigned', f'You have been assigned: {task.title}', 'info')
+        db.session.commit()
+        return jsonify({'message': 'Task created', 'task': task.to_dict()}), 201
 
-
-@admin_bp.route('/tasks', methods=['POST'])
-@admin_required
-def create_task():
-    data = request.get_json()
-    task = Task(
-        title=data['title'],
-        description=data.get('description', ''),
-        assigned_to=data.get('assigned_to'),
-        assigned_by=g.current_user.id,
-        priority=data.get('priority', 'medium'),
-        due_date=datetime.strptime(data['due_date'], '%Y-%m-%d').date() if data.get('due_date') else None
-    )
-    db.session.add(task)
-    if task.assigned_to:
-        add_notification(db, task.assigned_to, 'New Task Assigned',
-                         f'You have been assigned: {task.title}', 'info')
-    db.session.commit()
-    return jsonify({'message': 'Task created', 'task': task.to_dict()}), 201
-
+    return jsonify({'tasks': [t.to_dict() for t in Task.query.order_by(Task.created_at.desc()).all()]}), 200
 
 @admin_bp.route('/tasks/<int:task_id>', methods=['PUT'])
 @admin_required
@@ -493,34 +412,29 @@ def update_task_admin(task_id):
     db.session.commit()
     return jsonify({'message': 'Task updated', 'task': task.to_dict()}), 200
 
-
-# Tickets
 @admin_bp.route('/tickets', methods=['GET'])
 @admin_required
 def get_all_tickets():
-    status = request.args.get('status', None)
+    status = request.args.get('status')
     q = Ticket.query.order_by(Ticket.created_at.desc())
     if status:
         q = q.filter_by(status=status)
     return jsonify({'tickets': [t.to_dict() for t in q.all()]}), 200
 
-
 @admin_bp.route('/tickets/<int:ticket_id>', methods=['PUT'])
 @admin_required
-def update_ticket(ticket_id):
+def update_ticket_admin(ticket_id):
     ticket = Ticket.query.get_or_404(ticket_id)
     data = request.get_json()
     if 'status' in data:
         ticket.status = data['status']
         if data['status'] == 'resolved':
             ticket.resolved_at = datetime.utcnow()
-            add_notification(db, ticket.employee_id, 'Ticket Resolved ✅',
-                             f'Your ticket #{ticket.ticket_number} has been resolved.', 'success')
+            add_notification(db, ticket.employee_id, 'Ticket Resolved ✅', f'Your ticket #{ticket.ticket_number} has been resolved.', 'success')
     if 'resolution_notes' in data:
         ticket.resolution_notes = data['resolution_notes']
     db.session.commit()
     return jsonify({'message': 'Ticket updated', 'ticket': ticket.to_dict()}), 200
-
 
 # ─────────────────────────────────────────────
 # CHATBOT ROUTES
@@ -536,46 +450,20 @@ def chat_message():
     if not message:
         return jsonify({'error': 'Message required'}), 400
 
-    # Load history
-    history = ChatHistory.query.filter_by(
-        employee_id=g.current_user.id, session_id=session_id
-    ).order_by(ChatHistory.timestamp).all()
-    history_dicts = [{'role': h.role, 'message': h.message} for h in history]
-
+    history = ChatHistory.query.filter_by(employee_id=g.current_user.id, session_id=session_id).order_by(ChatHistory.timestamp).all()
+    
     # Save user message
-    user_msg = ChatHistory(
-        employee_id=g.current_user.id,
-        session_id=session_id,
-        role='user',
-        message=message,
-        intent='user_input'
-    )
-    db.session.add(user_msg)
+    db.session.add(ChatHistory(employee_id=g.current_user.id, session_id=session_id, role='user', message=message, intent='user_input'))
     db.session.flush()
 
-    # Get AI response (pass session_id for state machine)
-    result = engine.chat(message, g.current_user, history_dicts, db, session_id=session_id)
+    # Get response
+    res = engine.chat(message, g.current_user, [{'role': h.role, 'message': h.message} for h in history], db, session_id=session_id)
 
     # Save assistant response
-    bot_msg = ChatHistory(
-        employee_id=g.current_user.id,
-        session_id=session_id,
-        role='assistant',
-        message=result['reply'],
-        intent=result.get('intent'),
-        action_taken=result.get('action')
-    )
-    db.session.add(bot_msg)
+    db.session.add(ChatHistory(employee_id=g.current_user.id, session_id=session_id, role='assistant', message=res['reply'], intent=res.get('intent'), action_taken=res.get('action')))
     db.session.commit()
 
-    return jsonify({
-        'reply': result['reply'],
-        'session_id': session_id,
-        'action': result.get('action'),
-        'data': result.get('data'),
-        'intent': result.get('intent')
-    }), 200
-
+    return jsonify({'reply': res['reply'], 'session_id': session_id, 'action': res.get('action'), 'data': res.get('data'), 'intent': res.get('intent')}), 200
 
 @chat_bp.route('/history', methods=['GET'])
 @token_required
@@ -586,7 +474,6 @@ def chat_history():
         q = q.filter_by(session_id=session_id)
     msgs = q.order_by(ChatHistory.timestamp.desc()).limit(50).all()
     return jsonify({'history': [m.to_dict() for m in reversed(msgs)]}), 200
-
 
 @chat_bp.route('/sessions', methods=['GET'])
 @token_required
@@ -605,7 +492,6 @@ def chat_sessions():
          'last_msg': s.last_msg.isoformat(), 'msg_count': s.msg_count}
         for s in sessions
     ]}), 200
-
 
 def register_routes(app):
     app.register_blueprint(auth_bp)
