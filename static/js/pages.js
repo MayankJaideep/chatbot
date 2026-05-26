@@ -117,8 +117,30 @@ async function renderLeaves(el) {
 async function loadLeaves() {
   try {
     const d = await API.getLeaves();
-    const rows = d.leaves.map(l => `<tr><td>${badge(l.leave_type)}</td><td>${fmtDate(l.from_date)}</td><td>${fmtDate(l.to_date)}</td><td>${l.days} day(s)</td><td>${l.reason}</td><td>${badge(l.status)}</td><td>${fmtDate(l.applied_on)}</td></tr>`).join('');
-    document.getElementById('leave-table').innerHTML = `<table><thead><tr><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th>Applied</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">No leave requests yet</td></tr>'}</tbody></table>`;
+    const cards = d.leaves.map(l => `
+      <div class="data-card">
+        <div class="data-card-header">
+          <span class="data-card-title">${badge(l.leave_type)}</span>
+          <span>${badge(l.status)}</span>
+        </div>
+        <div class="data-card-body">
+          <div class="data-card-row">
+            <span class="data-card-label">Duration</span>
+            <span class="data-card-value">📅 ${fmtDate(l.from_date)} to ${fmtDate(l.to_date)} (${l.days} days)</span>
+          </div>
+          <div class="data-card-row">
+            <span class="data-card-label">Reason</span>
+            <span class="data-card-value" style="text-align:right;max-width:70%">${l.reason}</span>
+          </div>
+          <div class="data-card-row">
+            <span class="data-card-label">Applied On</span>
+            <span class="data-card-value">${fmtDate(l.applied_on)}</span>
+          </div>
+        </div>
+      </div>`).join('');
+    document.getElementById('leave-table').innerHTML = cards
+      ? `<div class="card-list">${cards}</div>`
+      : '<div class="empty-state" style="padding:24px"><i class="fa-solid fa-umbrella-beach"></i><p>No leave requests yet</p></div>';
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -152,24 +174,43 @@ async function renderTasks(el) {
 async function loadTasks() {
   try {
     const d = await API.getTasks();
-    const rows = d.tasks.map(t => {
+    const cards = d.tasks.map(t => {
       const isCompleted = t.status === 'completed';
       const deleteBtn = isCompleted
-        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);margin-left:6px" onclick="deleteTask(${t.id})" title="Delete completed task"><i class="fa-solid fa-trash"></i></button>`
+        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)" onclick="deleteTask(${t.id})" title="Delete completed task"><i class="fa-solid fa-trash"></i></button>`
         : '';
-      return `<tr style="${isCompleted ? 'opacity:0.65' : ''}">  
-        <td><div style="font-weight:600">${t.title}</div><div class="text-muted" style="font-size:11px">${t.description || ''}</div></td>
-        <td>${badge(t.priority)}</td>
-        <td>${badge(t.status)}</td>
-        <td><div class="progress-bar"><div class="progress-fill" style="width:${t.progress}%"></div></div><div style="font-size:11px;margin-top:3px">${t.progress}%</div></td>
-        <td>${fmtDate(t.due_date)}</td>
-        <td>
-          <button class="btn btn-sm btn-outline" onclick="updateTaskModal(${t.id},'${t.status}',${t.progress})">Update</button>
+      return `
+      <div class="data-card" style="${isCompleted ? 'opacity:0.65' : ''}">
+        <div class="data-card-header">
+          <span class="data-card-title">${t.title}</span>
+          <div style="display:flex;gap:4px">
+            ${badge(t.priority)}
+            ${badge(t.status)}
+          </div>
+        </div>
+        <div class="data-card-body">
+          ${t.description ? `<p style="font-size:11.5px;color:var(--text2);margin-bottom:4px">${t.description}</p>` : ''}
+          <div class="data-card-row">
+            <span class="data-card-label">Progress</span>
+            <span class="data-card-value" style="display:flex;align-items:center;gap:8px;width:60%;justify-content:flex-end">
+              <div class="progress-bar" style="flex:1;margin-top:0"><div class="progress-fill" style="width:${t.progress}%"></div></div>
+              <span>${t.progress}%</span>
+            </span>
+          </div>
+          <div class="data-card-row">
+            <span class="data-card-label">Due Date</span>
+            <span class="data-card-value">⏳ ${fmtDate(t.due_date)}</span>
+          </div>
+        </div>
+        <div class="data-card-footer">
+          <button class="btn btn-sm btn-outline" onclick="updateTaskModal(${t.id},'${t.status}',${t.progress})"><i class="fa-solid fa-pen"></i> Update</button>
           ${deleteBtn}
-        </td>
-      </tr>`;
+        </div>
+      </div>`;
     }).join('');
-    document.getElementById('task-table').innerHTML = `<table><thead><tr><th>Task</th><th>Priority</th><th>Status</th><th>Progress</th><th>Due</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="6" class="text-center text-muted" style="padding:24px">No tasks assigned</td></tr>'}</tbody></table>`;
+    document.getElementById('task-table').innerHTML = cards
+      ? `<div class="card-list">${cards}</div>`
+      : '<div class="empty-state" style="padding:24px"><i class="fa-solid fa-list-check"></i><p>No tasks assigned</p></div>';
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -201,22 +242,43 @@ async function renderTickets(el) {
 async function loadTickets() {
   try {
     const d = await API.getTickets();
-    const rows = d.tickets.map(t => {
+    const cards = d.tickets.map(t => {
       const isDone = t.status === 'resolved' || t.status === 'closed';
       const deleteBtn = isDone
-        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3);margin-left:6px" onclick="deleteTicket(${t.id})" title="Delete resolved ticket"><i class="fa-solid fa-trash"></i></button>`
+        ? `<button class="btn btn-sm" style="background:rgba(239,68,68,.15);color:#f87171;border:1px solid rgba(239,68,68,.3)" onclick="deleteTicket(${t.id})" title="Delete ticket"><i class="fa-solid fa-trash"></i></button>`
         : '';
-      return `<tr style="${isDone ? 'opacity:0.65' : ''}">
-        <td style="font-weight:600">${t.ticket_number}</td>
-        <td>${badge(t.category)}</td>
-        <td>${t.subject}</td>
-        <td>${badge(t.priority)}</td>
-        <td>${badge(t.status)}</td>
-        <td>${fmtDate(t.created_at)}</td>
-        <td>${deleteBtn}</td>
-      </tr>`;
+      return `
+      <div class="data-card" style="${isDone ? 'opacity:0.65' : ''}">
+        <div class="data-card-header">
+          <span class="data-card-title" style="color:var(--primary)">${t.ticket_number}</span>
+          <div style="display:flex;gap:4px">
+            ${badge(t.priority)}
+            ${badge(t.status)}
+          </div>
+        </div>
+        <div class="data-card-body">
+          <div class="data-card-row">
+            <span class="data-card-label">Category</span>
+            <span class="data-card-value">${badge(t.category)}</span>
+          </div>
+          <div class="data-card-row">
+            <span class="data-card-label">Subject</span>
+            <span class="data-card-value" style="text-align:right;max-width:70%">${t.subject}</span>
+          </div>
+          <div class="data-card-row">
+            <span class="data-card-label">Created On</span>
+            <span class="data-card-value">📅 ${fmtDate(t.created_at)}</span>
+          </div>
+        </div>
+        ${deleteBtn ? `
+        <div class="data-card-footer">
+          ${deleteBtn}
+        </div>` : ''}
+      </div>`;
     }).join('');
-    document.getElementById('ticket-table').innerHTML = `<table><thead><tr><th>#</th><th>Category</th><th>Subject</th><th>Priority</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">No tickets raised</td></tr>'}</tbody></table>`;
+    document.getElementById('ticket-table').innerHTML = cards
+      ? `<div class="card-list">${cards}</div>`
+      : '<div class="empty-state" style="padding:24px"><i class="fa-solid fa-ticket"></i><p>No tickets raised yet</p></div>';
   } catch (e) { toast(e.message, 'error'); }
 }
 
