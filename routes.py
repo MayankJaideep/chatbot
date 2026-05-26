@@ -28,6 +28,46 @@ def login():
         return jsonify({'error': 'Account deactivated. Contact admin.'}), 403
     return jsonify({'token': generate_token(emp.id, emp.role), 'user': emp.to_dict()}), 200
 
+@auth_bp.route('/register', methods=['POST'])
+def register():
+    data = request.get_json()
+    name = data.get('name', '').strip()
+    email = data.get('email', '').strip().lower()
+    password = data.get('password', '')
+    department = data.get('department', 'General').strip()
+    designation = data.get('designation', 'Employee').strip()
+    phone = data.get('phone', '').strip()
+
+    if not name or not email or not password:
+        return jsonify({'error': 'Name, email and password are required'}), 400
+    if len(password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+
+    if Employee.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already registered'}), 400
+
+    count = Employee.query.count()
+    employee_id = f"EMP{str(count + 1).zfill(3)}"
+
+    emp = Employee(
+        employee_id=employee_id,
+        name=name,
+        email=email,
+        department=department,
+        designation=designation,
+        phone=phone,
+        role='employee'
+    )
+    emp.set_password(password)
+    
+    db.session.add(emp)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Registration successful! You can now log in.',
+        'user': emp.to_dict()
+    }), 201
+
 @auth_bp.route('/me', methods=['GET'])
 @token_required
 def me():

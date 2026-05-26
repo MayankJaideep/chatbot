@@ -43,6 +43,51 @@
         <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
       </button>
     </form>
+
+    <!-- Register Form -->
+    <form id="register-form" class="auth-form hidden">
+      <div class="form-group">
+        <label>Full Name</label>
+        <div class="input-icon">
+          <i class="fa-solid fa-user"></i>
+          <input id="register-name" type="text" placeholder="John Doe" required autocomplete="name"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <div class="input-icon">
+          <i class="fa-solid fa-envelope"></i>
+          <input id="register-email" type="email" placeholder="you@company.com" required autocomplete="email"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <div class="input-icon">
+          <i class="fa-solid fa-lock"></i>
+          <input id="register-password" type="password" placeholder="••••••••" required autocomplete="new-password"/>
+        </div>
+      </div>
+      <div class="form-row" style="margin-bottom: 16px; gap: 8px;">
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Department</label>
+          <input id="register-dept" type="text" placeholder="Engineering" class="form-control" style="background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); padding: 8px 12px; font-size: 13px;"/>
+        </div>
+        <div class="form-group" style="margin-bottom: 0;">
+          <label>Designation</label>
+          <input id="register-desig" type="text" placeholder="Software Engineer" class="form-control" style="background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); padding: 8px 12px; font-size: 13px;"/>
+        </div>
+      </div>
+      <button type="submit" class="btn-primary btn-full" id="register-btn">
+        <span class="btn-text">Sign Up</span>
+        <span class="btn-loader hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+      </button>
+    </form>
+
+    <div class="auth-toggle-link text-center" style="margin-top: 20px; font-size: 12px; color: var(--text2);">
+      <span id="to-register" onclick="showRegister()" style="cursor: pointer; color: var(--primary); font-weight: 600;">Don't have an account? Sign Up</span>
+      <span id="to-login" class="hidden" onclick="showLoginForm()" style="cursor: pointer; color: var(--primary); font-weight: 600;">Already have an account? Sign In</span>
+    </div>
+
     <div class="demo-creds">
       <p>Demo Credentials</p>
       <div class="cred-pills">

@@ -38,6 +38,7 @@ const API = {
 
   // Auth
   login: (email, pw) => API.post('/api/auth/login', { email, password: pw }),
+  register: (name, email, pw, dept, desig) => API.post('/api/auth/register', { name, email, password: pw, department: dept, designation: desig }),
   me: () => API.get('/api/auth/me'),
 
   // Employee

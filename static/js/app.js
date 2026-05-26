@@ -69,6 +69,54 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 });
 
+// ── Register ──
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('register-btn');
+  const err = document.getElementById('login-error');
+  btn.querySelector('.btn-text').classList.add('hidden');
+  btn.querySelector('.btn-loader').classList.remove('hidden');
+  err.classList.add('hidden');
+  try {
+    const d = await API.register(
+      document.getElementById('register-name').value,
+      document.getElementById('register-email').value,
+      document.getElementById('register-password').value,
+      document.getElementById('register-dept').value || 'General',
+      document.getElementById('register-desig').value || 'Employee'
+    );
+    toast(d.message, 'success');
+    showLoginForm();
+    // Pre-fill login email
+    document.getElementById('login-email').value = document.getElementById('register-email').value;
+    document.getElementById('login-password').value = '';
+  } catch (ex) {
+    err.textContent = ex.message;
+    err.classList.remove('hidden');
+  } finally {
+    btn.querySelector('.btn-text').classList.remove('hidden');
+    btn.querySelector('.btn-loader').classList.add('hidden');
+  }
+});
+
+function showRegister() {
+  document.getElementById('login-form').classList.add('hidden');
+  document.getElementById('register-form').classList.remove('hidden');
+  document.getElementById('to-register').classList.add('hidden');
+  document.getElementById('to-login').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+  document.querySelector('.demo-creds').classList.add('hidden');
+}
+
+function showLoginForm() {
+  document.getElementById('register-form').classList.add('hidden');
+  document.getElementById('login-form').classList.remove('hidden');
+  document.getElementById('to-login').classList.add('hidden');
+  document.getElementById('to-register').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+  document.querySelector('.demo-creds').classList.remove('hidden');
+}
+
 function fillCreds(email, pw) {
   document.getElementById('login-email').value = email;
   document.getElementById('login-password').value = pw;
