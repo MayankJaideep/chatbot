@@ -30,7 +30,7 @@ function renderChat(el) {
         ${QUICK_PROMPTS.map(p => `<span class="qa-chip" onclick="sendQuick('${p}')">${p}</span>`).join('')}
       </div>
       <div class="chat-input-bar">
-        <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask ARIA anything… e.g. 'I need sick leave tomorrow'" onkeydown="chatKeyDown(event)"></textarea>
+        <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask ARIA anything…" onkeydown="chatKeyDown(event)"></textarea>
         <button class="chat-send" id="chat-send-btn" onclick="sendChatMessage()"><i class="fa-solid fa-paper-plane"></i></button>
       </div>
     </div>
