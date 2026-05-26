@@ -15,7 +15,7 @@ const API = {
     const res = await fetch(url, opts);
     const data = await res.json().catch(() => ({}));
     if (res.status === 401) {
-      if (!url.includes('/api/auth/me')) {
+      if (!url.includes('/api/auth/me') && !url.includes('/api/auth/login')) {
         localStorage.removeItem('aria_token');
         API.token = null;
         API.user = null;
