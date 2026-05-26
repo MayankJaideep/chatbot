@@ -115,7 +115,7 @@ def check_in():
     else:
         db.session.add(Attendance(employee_id=g.current_user.id, date=today, check_in=datetime.utcnow(), status='present'))
     db.session.commit()
-    return jsonify({'message': 'Check-in recorded', 'time': datetime.utcnow().isoformat()}), 200
+    return jsonify({'message': 'Check-in recorded', 'time': datetime.utcnow().isoformat() + 'Z'}), 200
 
 @employee_bp.route('/attendance/checkout', methods=['POST'])
 @token_required
@@ -528,8 +528,8 @@ def chat_sessions():
      .order_by(db.func.max(ChatHistory.timestamp).desc())\
      .limit(10).all()
     return jsonify({'sessions': [
-        {'session_id': s.session_id, 'started_at': s.started_at.isoformat(),
-         'last_msg': s.last_msg.isoformat(), 'msg_count': s.msg_count}
+        {'session_id': s.session_id, 'started_at': s.started_at.isoformat() + 'Z',
+         'last_msg': s.last_msg.isoformat() + 'Z', 'msg_count': s.msg_count}
         for s in sessions
     ]}), 200
 

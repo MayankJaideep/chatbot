@@ -44,7 +44,7 @@ class Employee(db.Model):
             'role': self.role,
             'is_active': self.is_active,
             'leave_balance': self.leave_balance,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat() + 'Z'
         }
 
 
@@ -65,8 +65,8 @@ class Attendance(db.Model):
             'employee_id': self.employee_id,
             'employee_name': self.employee.name if self.employee else None,
             'date': self.date.isoformat(),
-            'check_in': self.check_in.isoformat() if self.check_in else None,
-            'check_out': self.check_out.isoformat() if self.check_out else None,
+            'check_in': self.check_in.isoformat() + 'Z' if self.check_in else None,
+            'check_out': self.check_out.isoformat() + 'Z' if self.check_out else None,
             'status': self.status,
             'hours_worked': self.hours_worked
         }
@@ -101,7 +101,7 @@ class Leave(db.Model):
             'days': self.days,
             'reason': self.reason,
             'status': self.status,
-            'applied_on': self.applied_on.isoformat(),
+            'applied_on': self.applied_on.isoformat() + 'Z',
             'admin_comment': self.admin_comment,
             'via_chatbot': self.via_chatbot
         }
@@ -135,7 +135,7 @@ class Task(db.Model):
             'priority': self.priority,
             'status': self.status,
             'due_date': self.due_date.isoformat() if self.due_date else None,
-            'created_at': self.created_at.isoformat(),
+            'created_at': self.created_at.isoformat() + 'Z',
             'progress': self.progress,
             'notes': self.notes
         }
@@ -170,8 +170,8 @@ class Ticket(db.Model):
             'description': self.description,
             'priority': self.priority,
             'status': self.status,
-            'created_at': self.created_at.isoformat(),
-            'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
+            'created_at': self.created_at.isoformat() + 'Z',
+            'resolved_at': self.resolved_at.isoformat() + 'Z' if self.resolved_at else None,
             'via_chatbot': self.via_chatbot
         }
 
@@ -196,7 +196,7 @@ class ChatHistory(db.Model):
             'message': self.message,
             'intent': self.intent,
             'action_taken': self.action_taken,
-            'timestamp': self.timestamp.isoformat()
+            'timestamp': self.timestamp.isoformat() + 'Z'
         }
 
 
@@ -220,5 +220,5 @@ class Notification(db.Model):
             'type': self.type,
             'is_read': self.is_read,
             'link': self.link,
-            'created_at': self.created_at.isoformat()
+            'created_at': self.created_at.isoformat() + 'Z'
         }
