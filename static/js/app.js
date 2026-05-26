@@ -122,12 +122,24 @@ function navigate(page) {
   document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
   const renderer = PAGE_RENDERERS[page];
   if (renderer && pageEl) renderer(pageEl);
-  // Close sidebar on mobile
-  if (window.innerWidth < 768) document.getElementById('sidebar').classList.remove('open');
+  // Close sidebar on navigation
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebar-overlay')?.classList.add('hidden');
 }
 
 function toggleSidebar() {
-  document.getElementById('sidebar').classList.toggle('open');
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) {
+    sidebar.classList.toggle('open');
+    if (overlay) {
+      if (sidebar.classList.contains('open')) {
+        overlay.classList.remove('hidden');
+      } else {
+        overlay.classList.add('hidden');
+      }
+    }
+  }
 }
 
 // ── Notifications ──
