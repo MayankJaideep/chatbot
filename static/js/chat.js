@@ -13,7 +13,6 @@ const QUICK_PROMPTS = [
 function renderChat(el) {
   if (!chatSessionId) chatSessionId = 'sess-' + Date.now();
   el.innerHTML = `
-  <div class="page-header"><div><h2><i class="fa-solid fa-robot" style="color:var(--primary)"></i> ARIA AI Assistant</h2><p>Chat naturally — ARIA handles the rest</p></div></div>
   <div class="chat-layout">
     <div class="chat-main">
       <div class="chat-header">
@@ -21,14 +20,14 @@ function renderChat(el) {
         <div><div style="font-weight:700">ARIA</div><div class="aria-status">Online & Ready</div></div>
         <button class="btn btn-sm btn-outline" style="margin-left:auto" onclick="newChatSession()"><i class="fa-solid fa-plus"></i> New Chat</button>
       </div>
-      <div class="quick-actions" id="quick-actions">
-        ${QUICK_PROMPTS.map(p => `<span class="qa-chip" onclick="sendQuick('${p}')">${p}</span>`).join('')}
-      </div>
       <div class="chat-messages" id="chat-messages">
         <div class="msg-row bot">
           <div class="msg-avatar bot"><i class="fa-solid fa-brain"></i></div>
           <div><div class="msg-bubble">Hello <strong>${API.user?.name?.split(' ')[0] || 'there'}</strong>! 👋 I'm ARIA, your AI office assistant.<br><br>I can help you:<br>📅 Apply for leave<br>🎫 Create helpdesk tickets<br>✅ Update tasks<br>📊 Check attendance<br><br>Just tell me what you need!</div><div class="msg-time">Just now</div></div>
         </div>
+      </div>
+      <div class="quick-actions" id="quick-actions">
+        ${QUICK_PROMPTS.map(p => `<span class="qa-chip" onclick="sendQuick('${p}')">${p}</span>`).join('')}
       </div>
       <div class="chat-input-bar">
         <textarea class="chat-input" id="chat-input" rows="1" placeholder="Ask ARIA anything… e.g. 'I need sick leave tomorrow'" onkeydown="chatKeyDown(event)"></textarea>

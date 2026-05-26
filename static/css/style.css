@@ -659,6 +659,12 @@ input, textarea, select {
   flex-direction: column;
 }
 
+/* Edge-to-edge immersive full-screen mode for the AI Assistant chat page */
+.page-container:has(#page-chat.active) {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
 .page {
   display: none;
   height: 100%;
@@ -1170,16 +1176,17 @@ tr:hover td {
   50% { transform: translateY(-4px); }
 }
 
-/* Horizontal scrollable action chips */
+/* Horizontal scrollable action chips sitting beautifully above input bar */
 .quick-actions {
   display: flex;
   flex-wrap: nowrap;
-  gap: 6px;
-  padding: 10px 14px 6px;
+  gap: 8px;
+  padding: 8px 16px;
   overflow-x: auto;
   scrollbar-width: none;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  border-bottom: none;
 }
 
 .quick-actions::-webkit-scrollbar {
