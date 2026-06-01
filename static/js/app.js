@@ -141,7 +141,8 @@ const PAGE_TITLES = {
   dashboard: 'Dashboard', chat: 'AI Assistant', attendance: 'Attendance',
   leaves: 'Leave Management', tasks: 'My Tasks', tickets: 'Helpdesk',
   'admin-dashboard': 'Analytics', employees: 'Employees',
-  'admin-leaves': 'Leave Requests', 'admin-tickets': 'All Tickets', 'admin-tasks': 'Task Manager'
+  'admin-leaves': 'Leave Requests', 'admin-tickets': 'All Tickets', 'admin-tasks': 'Task Manager',
+  'admin-visits': 'Site Visits', 'admin-sites': 'Manage Sites'
 };
 
 const PAGE_RENDERERS = {
@@ -156,6 +157,8 @@ const PAGE_RENDERERS = {
   'admin-leaves': renderAdminLeaves,
   'admin-tickets': renderAdminTickets,
   'admin-tasks': renderAdminTasks,
+  'admin-visits': renderAdminVisits,
+  'admin-sites': renderAdminSites,
 };
 
 function navigate(page) {

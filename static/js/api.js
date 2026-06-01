@@ -46,6 +46,9 @@ const API = {
   checkIn: () => API.post('/api/employee/attendance/checkin'),
   checkOut: () => API.post('/api/employee/attendance/checkout'),
   getAttendance: (m, y) => API.get(`/api/employee/attendance?month=${m}&year=${y}`),
+  checkInVisit: (client, lat, lng) => API.post('/api/employee/visit/checkin', { client_name: client, latitude: lat, longitude: lng }),
+  checkOutVisit: (lat, lng) => API.post('/api/employee/visit/checkout', { latitude: lat, longitude: lng }),
+  getVisits: () => API.get('/api/employee/visits'),
   applyLeave: (d) => API.post('/api/employee/leave/apply', d),
   getLeaves: () => API.get('/api/employee/leave'),
   getTasks: () => API.get('/api/employee/tasks'),
@@ -57,6 +60,9 @@ const API = {
   getNotifications: () => API.get('/api/employee/notifications'),
   markRead: (id) => API.put(`/api/employee/notifications/${id}/read`),
   markAllRead: () => API.put('/api/employee/notifications/read-all'),
+  getSites: () => API.get('/api/employee/sites'),
+  checkInSite: (siteId, lat, lng, acc) => API.post('/api/site/checkin', { site_id: siteId, lat: lat, lng: lng, accuracy: acc }),
+  checkOutSite: (siteId, lat, lng, acc) => API.post('/api/site/checkout', { site_id: siteId, lat: lat, lng: lng, accuracy: acc }),
 
   // Admin
   adminDashboard: () => API.get('/api/admin/dashboard'),
@@ -70,6 +76,11 @@ const API = {
   getAllTasks: () => API.get('/api/admin/tasks'),
   createTask: (d) => API.post('/api/admin/tasks', d),
   updateTaskAdmin: (id, d) => API.put(`/api/admin/tasks/${id}`, d),
+  getAllVisits: () => API.get('/api/admin/visits'),
+  getSitesAdmin: () => API.get('/api/admin/sites'),
+  createSiteAdmin: (d) => API.post('/api/admin/sites', d),
+  updateSiteAdmin: (id, d) => API.put(`/api/admin/sites/${id}`, d),
+  deleteSiteAdmin: (id) => API.del(`/api/admin/sites/${id}`),
 
   // Chat
   sendMsg: (msg, sid) => API.post('/api/chat/message', { message: msg, session_id: sid }),

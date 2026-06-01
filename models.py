@@ -25,6 +25,7 @@ class Employee(db.Model):
     tickets = db.relationship('Ticket', backref='employee', lazy=True, foreign_keys='Ticket.employee_id')
     notifications = db.relationship('Notification', backref='employee', lazy=True, foreign_keys='Notification.employee_id')
     chat_history = db.relationship('ChatHistory', backref='employee', lazy=True, foreign_keys='ChatHistory.employee_id')
+    client_visits = db.relationship('ClientVisit', backref='employee', lazy=True, foreign_keys='ClientVisit.employee_id')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -222,3 +223,91 @@ class Notification(db.Model):
             'link': self.link,
             'created_at': self.created_at.isoformat() + 'Z'
         }
+
+
+class ClientVisit(db.Model):
+    __tablename__ = 'client_visits'
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    client_name = db.Column(db.String(150), nullable=False)
+    check_in_latitude = db.Column(db.Float)
+    check_in_longitude = db.Column(db.Float)
+    check_out_latitude = db.Column(db.Float)
+    check_out_longitude = db.Column(db.Float)
+    check_in_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    check_out_time = db.Column(db.DateTime)
+    hours_at_location = db.Column(db.Float, default=0.0)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.name if self.employee else None,
+            'client_name': self.client_name,
+            'check_in_latitude': self.check_in_latitude,
+            'check_in_longitude': self.check_in_longitude,
+            'check_out_latitude': self.check_out_latitude,
+            'check_out_longitude': self.check_out_longitude,
+            'check_in_time': self.check_in_time.isoformat() + 'Z' if self.check_in_time else None,
+            'check_out_time': self.check_out_time.isoformat() + 'Z' if self.check_out_time else None,
+            'hours_at_location': self.hours_at_location
+        }
+
+
+class Site(db.Model):
+    __tablename__ = 'sites'
+    id = db.Column(db.Integer, primary_key=True)
+    site_name = db.Column(db.String(150), nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+    radius_meters = db.Column(db.Float, default=100.0)
+    client_name = db.Column(db.String(150))
+    active = db.Column(db.Boolean, default=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'site_name': self.site_name,
+            'latitude': self.latitude,
+            'longitude': self.longitude,
+            'radius_meters': self.radius_meters,
+            'client_name': self.client_name,
+            'active': self.active
+        }
+
+
+class SiteAttendance(db.Model):
+    __tablename__ = 'site_attendances'
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    site_id = db.Column(db.Integer, db.ForeignKey('sites.id'), nullable=False)
+    check_in_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    check_in_lat = db.Column(db.Float, nullable=False)
+    check_in_lng = db.Column(db.Float, nullable=False)
+    check_out_time = db.Column(db.DateTime)
+    check_out_lat = db.Column(db.Float)
+    check_out_lng = db.Column(db.Float)
+    status = db.Column(db.String(50), default='checked_in')
+
+    employee = db.relationship('Employee', backref=db.backref('site_attendances', lazy=True))
+    site = db.relationship('Site', backref=db.backref('attendances', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.name if self.employee else None,
+            'site_id': self.site_id,
+            'site_name': self.site.site_name if self.site else None,
+            'client_name': f"{self.site.client_name} - {self.site.site_name}" if self.site else "Unknown",
+            'check_in_latitude': self.check_in_lat,
+            'check_in_longitude': self.check_in_lng,
+            'check_out_latitude': self.check_out_lat,
+            'check_out_longitude': self.check_out_lng,
+            'check_in_time': self.check_in_time.isoformat() + 'Z' if self.check_in_time else None,
+            'check_out_time': self.check_out_time.isoformat() + 'Z' if self.check_out_time else None,
+            'hours_at_location': round((self.check_out_time - self.check_in_time).total_seconds() / 3600, 2) if self.check_out_time else None,
+            'status': self.status
+        }
+
+

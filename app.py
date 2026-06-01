@@ -81,6 +81,41 @@ if __name__ == '__main__':
             emp2.set_password('Emp@1234')
             db.session.add(emp2)
 
+        # Seed sites
+        from models import Site
+        if not Site.query.filter_by(site_name='Clover Mumbai').first():
+            mumbai_site = Site(
+                site_name='Clover Mumbai',
+                client_name='Clover Infotech',
+                latitude=19.1135499,
+                longitude=72.8665541,
+                radius_meters=100.0,
+                active=True
+            )
+            db.session.add(mumbai_site)
+
+        if not Site.query.filter_by(site_name='Clover Bangalore').first():
+            bangalore_site = Site(
+                site_name='Clover Bangalore',
+                client_name='Clover Infotech',
+                latitude=12.9742787,
+                longitude=77.6157605,
+                radius_meters=100.0,
+                active=True
+            )
+            db.session.add(bangalore_site)
+
+        if not Site.query.filter_by(site_name='Home').first():
+            home_site = Site(
+                site_name='Home',
+                client_name='Home Office',
+                latitude=13.024598243384572,
+                longitude=75.89437485546095,
+                radius_meters=150.0,
+                active=True
+            )
+            db.session.add(home_site)
+
         db.session.commit()
         print("\n✅ Database ready. Demo accounts:")
         print("   Admin : admin@company.com / Admin@123")

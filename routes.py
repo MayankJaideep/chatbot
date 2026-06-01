@@ -1,8 +1,9 @@
 import os
 import uuid
 from datetime import datetime, date, timedelta
+from math import radians, sin, cos, sqrt, atan2
 from flask import Blueprint, request, jsonify, g
-from models import db, Employee, Attendance, Leave, Task, Ticket, ChatHistory, Notification
+from models import db, Employee, Attendance, Leave, Task, Ticket, ChatHistory, Notification, ClientVisit, Site, SiteAttendance
 from utils import token_required, admin_required, generate_token, add_notification
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
@@ -145,6 +146,68 @@ def get_attendance():
     return jsonify({
         'records': [r.to_dict() for r in records],
         'today': today_rec.to_dict() if today_rec else None
+    }), 200
+
+@employee_bp.route('/visit/checkin', methods=['POST'])
+@token_required
+def visit_checkin():
+    data = request.get_json() or {}
+    client_name = data.get('client_name', '').strip()
+    lat = data.get('latitude')
+    lng = data.get('longitude')
+
+    if not client_name:
+        return jsonify({'error': 'Client name or location is required'}), 400
+
+    open_visit = ClientVisit.query.filter_by(employee_id=g.current_user.id, check_out_time=None).first()
+    if open_visit:
+        return jsonify({'error': f'Already checked in at {open_visit.client_name}. Please check out first.'}), 400
+
+    visit = ClientVisit(
+        employee_id=g.current_user.id,
+        client_name=client_name,
+        check_in_latitude=lat,
+        check_in_longitude=lng,
+        check_in_time=datetime.utcnow()
+    )
+    db.session.add(visit)
+    db.session.commit()
+    return jsonify({
+        'message': f'Checked in to {client_name} successfully',
+        'visit': visit.to_dict()
+    }), 201
+
+@employee_bp.route('/visit/checkout', methods=['POST'])
+@token_required
+def visit_checkout():
+    data = request.get_json() or {}
+    lat = data.get('latitude')
+    lng = data.get('longitude')
+
+    visit = ClientVisit.query.filter_by(employee_id=g.current_user.id, check_out_time=None).first()
+    if not visit:
+        return jsonify({'error': 'No active client visit found to check out from.'}), 400
+
+    visit.check_out_time = datetime.utcnow()
+    visit.check_out_latitude = lat
+    visit.check_out_longitude = lng
+    visit.hours_at_location = round((visit.check_out_time - visit.check_in_time).total_seconds() / 3600, 2)
+    db.session.commit()
+
+    return jsonify({
+        'message': f'Checked out from {visit.client_name}',
+        'hours_logged': visit.hours_at_location,
+        'visit': visit.to_dict()
+    }), 200
+
+@employee_bp.route('/visits', methods=['GET'])
+@token_required
+def get_visits():
+    records = SiteAttendance.query.filter_by(employee_id=g.current_user.id).order_by(SiteAttendance.check_in_time.desc()).all()
+    active_visit = SiteAttendance.query.filter_by(employee_id=g.current_user.id, status='checked_in').first()
+    return jsonify({
+        'records': [r.to_dict() for r in records],
+        'active_visit': active_visit.to_dict() if active_visit else None
     }), 200
 
 @employee_bp.route('/leave/apply', methods=['POST'])
@@ -416,6 +479,12 @@ def get_all_attendance():
         d = date.today()
     return jsonify({'date': d.isoformat(), 'records': [r.to_dict() for r in Attendance.query.filter_by(date=d).all()]}), 200
 
+@admin_bp.route('/visits', methods=['GET'])
+@admin_required
+def get_all_visits():
+    records = SiteAttendance.query.order_by(SiteAttendance.check_in_time.desc()).all()
+    return jsonify({'records': [r.to_dict() for r in records]}), 200
+
 @admin_bp.route('/tasks', methods=['GET', 'POST'])
 @admin_required
 def manage_tasks_admin():
@@ -533,8 +602,170 @@ def chat_sessions():
         for s in sessions
     ]}), 200
 
+def haversine_m(lat1, lon1, lat2, lon2):
+    R = 6371000  # meters
+    dlat = radians(lat2 - lat1)
+    dlon = radians(lon2 - lon1)
+    a = sin(dlat/2)**2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon/2)**2
+    c = 2 * atan2(sqrt(a), sqrt(1-a))
+    return R * c
+
+@employee_bp.route('/sites', methods=['GET'])
+@token_required
+def get_sites():
+    sites = Site.query.filter_by(active=True).order_by(Site.site_name).all()
+    return jsonify({'sites': [s.to_dict() for s in sites]}), 200
+
+@admin_bp.route('/sites', methods=['GET', 'POST'])
+@admin_required
+def manage_sites_admin():
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        site_name = data.get('site_name', '').strip()
+        client_name = data.get('client_name', '').strip()
+        try:
+            lat = float(data.get('latitude', 0))
+            lng = float(data.get('longitude', 0))
+            radius = float(data.get('radius_meters', 100.0))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Latitude, longitude and radius must be valid numbers'}), 400
+
+        if not site_name or not client_name:
+            return jsonify({'error': 'Site name and client name are required'}), 400
+
+        site = Site(
+            site_name=site_name,
+            client_name=client_name,
+            latitude=lat,
+            longitude=lng,
+            radius_meters=radius,
+            active=True
+        )
+        db.session.add(site)
+        db.session.commit()
+        return jsonify({'message': 'Site created successfully', 'site': site.to_dict()}), 201
+
+    sites = Site.query.order_by(Site.site_name).all()
+    return jsonify({'sites': [s.to_dict() for s in sites]}), 200
+
+@admin_bp.route('/sites/<int:site_id>', methods=['PUT', 'DELETE'])
+@admin_required
+def modify_site_admin(site_id):
+    site = db.session.get(Site, site_id)
+    if not site:
+        return jsonify({'error': 'Site not found'}), 404
+
+    if request.method == 'DELETE':
+        site.active = False
+        db.session.commit()
+        return jsonify({'message': 'Site deactivated successfully'}), 200
+
+    data = request.get_json() or {}
+    if 'site_name' in data:
+        site.site_name = data['site_name'].strip()
+    if 'client_name' in data:
+        site.client_name = data['client_name'].strip()
+    try:
+        if 'latitude' in data:
+            site.latitude = float(data['latitude'])
+        if 'longitude' in data:
+            site.longitude = float(data['longitude'])
+        if 'radius_meters' in data:
+            site.radius_meters = float(data['radius_meters'])
+    except (TypeError, ValueError):
+         return jsonify({'error': 'Latitude, longitude and radius must be valid numbers'}), 400
+
+    if 'active' in data:
+        site.active = bool(data['active'])
+
+    db.session.commit()
+    return jsonify({'message': 'Site updated successfully', 'site': site.to_dict()}), 200
+
 def register_routes(app):
     app.register_blueprint(auth_bp)
     app.register_blueprint(employee_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(chat_bp)
+
+    @app.route("/api/site/checkin", methods=["POST"])
+    @token_required
+    def site_checkin():
+        data = request.get_json() or {}
+        try:
+            user_lat = float(data.get("lat"))
+            user_lng = float(data.get("lng"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Latitude and longitude are required and must be numbers"}), 400
+
+        accuracy = float(data.get("accuracy", 0))
+        site_id = data.get("site_id")
+
+        if not site_id:
+            return jsonify({"error": "site_id is required"}), 400
+
+        if accuracy > 100:
+            return jsonify({"error": f"GPS accuracy is too poor ({round(accuracy, 1)}m). Please stand in an open space and try again."}), 400
+
+        site = db.session.get(Site, site_id)
+        if not site:
+            return jsonify({"error": "Site not found."}), 404
+        if not site.active:
+            return jsonify({"error": "Site is inactive."}), 400
+
+        distance = haversine_m(user_lat, user_lng, site.latitude, site.longitude)
+        if distance > site.radius_meters:
+            return jsonify({"error": f"You are outside the allowed site area. (Distance: {round(distance, 1)}m, Allowed Radius: {site.radius_meters}m)"}), 403
+
+        existing = SiteAttendance.query.filter_by(employee_id=g.current_user.id, status='checked_in').first()
+        if existing:
+            return jsonify({"error": f"You are already checked in at '{existing.site.site_name}'. Please check out first."}), 400
+
+        record = SiteAttendance(
+            employee_id=g.current_user.id,
+            site_id=site_id,
+            check_in_time=datetime.utcnow(),
+            check_in_lat=user_lat,
+            check_in_lng=user_lng,
+            status='checked_in'
+        )
+        db.session.add(record)
+        db.session.commit()
+        return jsonify({"message": "Check-in successful", "record": record.to_dict()}), 200
+
+    @app.route("/api/site/checkout", methods=["POST"])
+    @token_required
+    def site_checkout():
+        data = request.get_json() or {}
+        try:
+            user_lat = float(data.get("lat"))
+            user_lng = float(data.get("lng"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "Latitude and longitude are required and must be numbers"}), 400
+
+        accuracy = float(data.get("accuracy", 0))
+        site_id = data.get("site_id")
+
+        if not site_id:
+            return jsonify({"error": "site_id is required"}), 400
+
+        if accuracy > 100:
+            return jsonify({"error": f"GPS accuracy is too poor ({round(accuracy, 1)}m). Please stand in an open space and try again."}), 400
+
+        site = db.session.get(Site, site_id)
+        if not site:
+            return jsonify({"error": "Site not found."}), 404
+
+        record = SiteAttendance.query.filter_by(employee_id=g.current_user.id, site_id=site_id, status='checked_in').first()
+        if not record:
+            return jsonify({"error": "You are not checked in to this site."}), 400
+
+        distance = haversine_m(user_lat, user_lng, site.latitude, site.longitude)
+        if distance > site.radius_meters:
+            return jsonify({"error": f"You are outside the allowed site area to check out. (Distance: {round(distance, 1)}m, Allowed Radius: {site.radius_meters}m)"}), 403
+
+        record.check_out_time = datetime.utcnow()
+        record.check_out_lat = user_lat
+        record.check_out_lng = user_lng
+        record.status = 'checked_out'
+        db.session.commit()
+        return jsonify({"message": "Check-out successful", "record": record.to_dict()}), 200

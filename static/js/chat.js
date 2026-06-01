@@ -86,7 +86,7 @@ async function sendChatMessage() {
     hideTyping();
     appendMsg('bot', d.reply);
     if (d.action) {
-      setTimeout(() => toast(`Action: ${d.action.replace(/_/g,' ')}`, 'success'), 300);
+      setTimeout(() => toast(`Action: ${d.action.replace(/_/g, ' ')}`, 'success'), 300);
     }
   } catch (e) {
     hideTyping();

@@ -206,3 +206,256 @@ async function createTask() {
   try { await API.createTask(b); closeModal(); toast('Task created!', 'success'); await loadAdminTasks(); }
   catch (e) { toast(e.message, 'error'); }
 }
+
+// ── Admin: Site Visits ──
+async function renderAdminVisits(el) {
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h2>Employee Site Visits</h2>
+        <p>Real-time location logs & GPS tracking overview</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="visit-search" class="form-control" placeholder="Search employee or client..." oninput="filterAdminVisits()" style="width:200px;padding:6px 10px;font-size:12px"/>
+      </div>
+    </div>
+    <div class="section-card">
+      <div class="tbl-wrap" id="adm-visits-table">Loading site visits…</div>
+    </div>`;
+  await loadAdminVisits();
+}
+
+let allAdminVisitsData = [];
+
+async function loadAdminVisits() {
+  try {
+    const d = await API.getAllVisits();
+    allAdminVisitsData = d.records || [];
+    renderAdminVisitsTable(allAdminVisitsData);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function renderAdminVisitsTable(records) {
+  const tableEl = document.getElementById('adm-visits-table');
+  if (!tableEl) return;
+
+  const rows = records.map(r => {
+    const checkInCoords = r.check_in_latitude 
+      ? `<a class="gps-badge" href="https://www.google.com/maps?q=${r.check_in_latitude},${r.check_in_longitude}" target="_blank" title="View on Google Maps"><i class="fa-solid fa-location-dot"></i> ${r.check_in_latitude.toFixed(4)}, ${r.check_in_longitude.toFixed(4)}</a>` 
+      : '—';
+    const checkOutCoords = r.check_out_latitude 
+      ? `<a class="gps-badge gps-badge-checkout" href="https://www.google.com/maps?q=${r.check_out_latitude},${r.check_out_longitude}" target="_blank" title="View on Google Maps"><i class="fa-solid fa-location-dot"></i> ${r.check_out_latitude.toFixed(4)}, ${r.check_out_longitude.toFixed(4)}</a>` 
+      : '—';
+      
+    return `<tr>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="avatar-sm" style="width:28px;height:28px;font-size:11px">${r.employee_name ? r.employee_name[0] : 'E'}</div>
+          <div style="font-weight:600">${r.employee_name || 'Unknown Employee'}</div>
+        </div>
+      </td>
+      <td style="font-weight:600;color:var(--text);">${r.client_name}</td>
+      <td>
+        <div>${fmtTime(r.check_in_time)}</div>
+        <div class="text-muted" style="font-size:10px">${fmtDate(r.check_in_time)}</div>
+      </td>
+      <td>
+        <div>${r.check_out_time ? fmtTime(r.check_out_time) : '—'}</div>
+        <div class="text-muted" style="font-size:10px">${r.check_out_time ? fmtDate(r.check_out_time) : ''}</div>
+      </td>
+      <td>${checkInCoords}</td>
+      <td>${checkOutCoords}</td>
+      <td><span class="badge ${r.hours_at_location > 0 ? 'badge-approved' : 'badge-present'}">${r.hours_at_location ? r.hours_at_location.toFixed(2) + ' hrs' : 'Active'}</span></td>
+    </tr>`;
+  }).join('');
+
+  tableEl.innerHTML = `<table>
+    <thead>
+      <tr>
+        <th>Employee</th>
+        <th>Client Site</th>
+        <th>Check In</th>
+        <th>Check Out</th>
+        <th>Check In GPS</th>
+        <th>Check Out GPS</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows || '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">No site visits found</td></tr>'}
+    </tbody>
+  </table>`;
+}
+
+function filterAdminVisits() {
+  const query = document.getElementById('visit-search')?.value.toLowerCase() || '';
+  const filtered = allAdminVisitsData.filter(r => 
+    (r.employee_name && r.employee_name.toLowerCase().includes(query)) ||
+    (r.client_name && r.client_name.toLowerCase().includes(query))
+  );
+  renderAdminVisitsTable(filtered);
+}
+
+// ── Admin: Geofenced Sites ──
+async function renderAdminSites(el) {
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h2>Manage Geofenced Sites</h2>
+        <p>Define site coordinates and boundaries (allowed radius) for check-in validation</p>
+      </div>
+      <button class="btn btn-primary" onclick="showAddSiteForm()"><i class="fa-solid fa-plus"></i> Add New Site</button>
+    </div>
+    <div class="section-card">
+      <div class="tbl-wrap" id="adm-sites-table">Loading sites…</div>
+    </div>`;
+  await loadAdminSites();
+}
+
+async function loadAdminSites() {
+  const tableEl = document.getElementById('adm-sites-table');
+  if (!tableEl) return;
+  try {
+    const d = await API.getSitesAdmin();
+    const sites = d.sites || [];
+    
+    const rows = sites.map(s => {
+      const coords = `<a class="gps-badge" href="https://www.google.com/maps?q=${s.latitude},${s.longitude}" target="_blank" title="View on Google Maps"><i class="fa-solid fa-location-dot"></i> ${s.latitude.toFixed(6)}, ${s.longitude.toFixed(6)}</a>`;
+      const statusBadge = badge(s.active ? 'active' : 'inactive');
+      
+      return `<tr>
+        <td style="font-weight:600; color:var(--text);">${s.client_name}</td>
+        <td style="font-weight:600; color:var(--primary);">${s.site_name}</td>
+        <td>${coords}</td>
+        <td><strong>${s.radius_meters}</strong> meters</td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex; gap:6px">
+            <button class="btn btn-sm btn-outline" onclick="editAdminSite(${s.id}, '${s.client_name.replace(/'/g, "\\'")}', '${s.site_name.replace(/'/g, "\\'")}', ${s.latitude}, ${s.longitude}, ${s.radius_meters}, ${s.active})">Edit</button>
+            ${s.active ? `<button class="btn btn-sm btn-danger" onclick="deleteAdminSite(${s.id})">Deactivate</button>` : ''}
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+
+    tableEl.innerHTML = `<table>
+      <thead>
+        <tr>
+          <th>Client Name</th>
+          <th>Site / Office Name</th>
+          <th>GPS Center Coordinates</th>
+          <th>Allowed Radius</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="6" class="text-center text-muted" style="padding:24px">No geofenced sites defined</td></tr>'}
+      </tbody>
+    </table>`;
+  } catch (e) {
+    tableEl.innerHTML = `<div class="text-center text-muted" style="padding:24px">Error loading sites: ${e.message}</div>`;
+  }
+}
+
+function showAddSiteForm() {
+  modal(`<div class="modal-header"><h3>Add Geofenced Site</h3><button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label>Client Name</label><input class="form-control" id="ns-client" placeholder="e.g. Clover Infotech"/></div>
+      <div class="form-group"><label>Site Name</label><input class="form-control" id="ns-name" placeholder="e.g. Clover Bangalore"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Latitude</label><input class="form-control" type="number" step="any" id="ns-lat" placeholder="e.g. 12.9742787"/></div>
+      <div class="form-group"><label>Longitude</label><input class="form-control" type="number" step="any" id="ns-lng" placeholder="e.g. 77.6157605"/></div>
+    </div>
+    <div class="form-group">
+      <label>Allowed Radius (meters)</label>
+      <input class="form-control" type="number" id="ns-radius" value="100" placeholder="e.g. 100"/>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="addAdminSite()">Create Site</button></div>`);
+}
+
+async function addAdminSite() {
+  const b = {
+    client_name: document.getElementById('ns-client').value.trim(),
+    site_name: document.getElementById('ns-name').value.trim(),
+    latitude: parseFloat(document.getElementById('ns-lat').value),
+    longitude: parseFloat(document.getElementById('ns-lng').value),
+    radius_meters: parseFloat(document.getElementById('ns-radius').value || 100)
+  };
+  
+  if (!b.client_name || !b.site_name || isNaN(b.latitude) || isNaN(b.longitude)) {
+    toast('Please fill all fields with valid numbers', 'warning');
+    return;
+  }
+  
+  try {
+    await API.createSiteAdmin(b);
+    closeModal();
+    toast('Site geofence added successfully!', 'success');
+    await loadAdminSites();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+function editAdminSite(id, client, name, lat, lng, radius, active) {
+  modal(`<div class="modal-header"><h3>Edit Geofenced Site</h3><button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label>Client Name</label><input class="form-control" id="us-client" value="${client}"/></div>
+      <div class="form-group"><label>Site Name</label><input class="form-control" id="us-name" value="${name}"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Latitude</label><input class="form-control" type="number" step="any" id="us-lat" value="${lat}"/></div>
+      <div class="form-group"><label>Longitude</label><input class="form-control" type="number" step="any" id="us-lng" value="${lng}"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Radius (meters)</label><input class="form-control" type="number" id="us-radius" value="${radius}"/></div>
+      <div class="form-group"><label>Status</label>
+        <select class="form-control" id="us-active">
+          <option value="true" ${active ? 'selected' : ''}>Active</option>
+          <option value="false" ${!active ? 'selected' : ''}>Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveAdminSite(${id})">Save Changes</button></div>`);
+}
+
+async function saveAdminSite(id) {
+  const b = {
+    client_name: document.getElementById('us-client').value.trim(),
+    site_name: document.getElementById('us-name').value.trim(),
+    latitude: parseFloat(document.getElementById('us-lat').value),
+    longitude: parseFloat(document.getElementById('us-lng').value),
+    radius_meters: parseFloat(document.getElementById('us-radius').value),
+    active: document.getElementById('us-active').value === 'true'
+  };
+  
+  if (!b.client_name || !b.site_name || isNaN(b.latitude) || isNaN(b.longitude) || isNaN(b.radius_meters)) {
+    toast('Please fill all fields with valid numbers', 'warning');
+    return;
+  }
+  
+  try {
+    await API.updateSiteAdmin(id, b);
+    closeModal();
+    toast('Site geofence updated successfully!', 'success');
+    await loadAdminSites();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteAdminSite(id) {
+  if (!confirm('Are you sure you want to deactivate this geofenced site? Engineers will no longer be able to check in.')) return;
+  try {
+    await API.deleteSiteAdmin(id);
+    toast('Site deactivated', 'success');
+    await loadAdminSites();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
