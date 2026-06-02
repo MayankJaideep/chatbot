@@ -27,17 +27,21 @@ function drawBarChart(id, labels, data) {
   const w = c.width = c.offsetWidth; const h = c.height = 180;
   ctx.clearRect(0, 0, w, h);
   const pad = 30; const bw = (w - pad * 2) / labels.length - 8;
-  ctx.fillStyle = '#8892b0'; ctx.font = '10px Inter'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#475569'; ctx.font = '500 10px Inter'; ctx.textAlign = 'center';
   labels.forEach((lbl, i) => {
     const x = pad + i * ((w - pad * 2) / labels.length) + bw / 2;
-    const bh = ((data[i] || 0) / max) * (h - 40);
-    const y = h - bh - 20;
-    const grad = ctx.createLinearGradient(0, y, 0, h - 20);
-    grad.addColorStop(0, '#6c63ff'); grad.addColorStop(1, 'rgba(108,99,255,0.2)');
+    const bh = ((data[i] || 0) / max) * (h - 50);
+    const y = h - bh - 25;
+    const grad = ctx.createLinearGradient(0, y, 0, h - 25);
+    grad.addColorStop(0, '#2563eb'); grad.addColorStop(1, '#93c5fd');
     ctx.fillStyle = grad; ctx.beginPath();
-    ctx.roundRect(x - bw / 2, y, bw, bh, 4); ctx.fill();
-    ctx.fillStyle = '#8892b0'; ctx.fillText(lbl, x, h - 4);
-    if (data[i]) { ctx.fillStyle = '#e8eaf6'; ctx.fillText(data[i], x, y - 4); }
+    ctx.roundRect(x - bw / 2, y, bw, bh, 6); ctx.fill();
+    ctx.fillStyle = '#475569'; ctx.font = '500 10px Inter'; ctx.fillText(lbl, x, h - 6);
+    if (data[i] !== undefined) { 
+      ctx.fillStyle = '#0f172a'; 
+      ctx.font = 'bold 11px Inter';
+      ctx.fillText(data[i], x, y - 6); 
+    }
   });
 }
 
@@ -47,26 +51,33 @@ function drawDonut(id, labels, data) {
   const ctx = c.getContext('2d');
   const w = c.width = c.offsetWidth; const h = c.height = 180;
   const cx = w / 2 - 40; const cy = h / 2; const r = 60; const ri = 38;
-  const colors = ['#10b981', '#ef4444', '#f59e0b'];
-  const total = data.reduce((a, b) => a + b, 0) || 1;
+  const colors = ['#16a34a', '#dc2626', '#d97706'];
+  const total = data.reduce((a, b) => a + b, 0) || 0;
   let start = -Math.PI / 2;
   data.forEach((v, i) => {
-    const angle = (v / total) * Math.PI * 2;
-    ctx.beginPath(); ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, r, start, start + angle);
-    ctx.closePath(); ctx.fillStyle = colors[i]; ctx.fill();
-    start += angle;
+    const angle = total > 0 ? (v / total) * Math.PI * 2 : 0;
+    if (angle > 0) {
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, r, start, start + angle);
+      ctx.closePath(); ctx.fillStyle = colors[i]; ctx.fill();
+      start += angle;
+    }
   });
+  if (total === 0) {
+    ctx.beginPath(); ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.closePath(); ctx.fillStyle = '#e2e8f0'; ctx.fill();
+  }
   ctx.beginPath(); ctx.arc(cx, cy, ri, 0, Math.PI * 2);
-  ctx.fillStyle = '#1a2033'; ctx.fill();
-  ctx.fillStyle = '#e8eaf6'; ctx.font = 'bold 18px Inter'; ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffffff'; ctx.fill(); // Match pure-white card background
+  ctx.fillStyle = '#0f172a'; ctx.font = 'bold 18px Inter'; ctx.textAlign = 'center';
   ctx.fillText(total, cx, cy + 6);
-  ctx.font = '10px Inter'; ctx.fillStyle = '#8892b0'; ctx.fillText('Total', cx, cy + 20);
+  ctx.font = '500 10px Inter'; ctx.fillStyle = '#475569'; ctx.fillText('Total', cx, cy + 20);
   const lx = w / 2 + 30; let ly = h / 2 - 25;
   labels.forEach((l, i) => {
-    ctx.fillStyle = colors[i]; ctx.fillRect(lx, ly, 12, 12);
-    ctx.fillStyle = '#8892b0'; ctx.font = '11px Inter'; ctx.textAlign = 'left';
-    ctx.fillText(`${l}: ${data[i]}`, lx + 16, ly + 10);
+    ctx.fillStyle = colors[i]; ctx.beginPath(); ctx.roundRect(lx, ly, 12, 12, 3); ctx.fill();
+    ctx.fillStyle = '#475569'; ctx.font = '500 11px Inter'; ctx.textAlign = 'left';
+    ctx.fillText(`${l}: ${data[i]}`, lx + 18, ly + 10);
     ly += 22;
   });
 }

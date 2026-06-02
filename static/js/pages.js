@@ -79,29 +79,6 @@ async function renderAttendance(el) {
         </div>
       </div>
 
-      <div class="form-row" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
-        <input type="checkbox" id="mock-gps-enable" onchange="toggleMockGPS()" style="width: auto; margin: 0; cursor: pointer;" />
-        <label for="mock-gps-enable" style="font-size: 11px; margin: 0; cursor: pointer; color: var(--primary); font-weight: 500;">🧪 Dev Mode: Mock GPS Coordinates</label>
-      </div>
-
-      <div id="mock-gps-inputs" class="hidden" style="margin-bottom: 12px; border-left: 2px dashed var(--primary); padding-left: 10px; padding-bottom: 4px;">
-        <div class="form-row" style="gap: 8px; display: flex; flex-wrap: wrap; margin-bottom: 6px;">
-          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 120px;">
-            <label style="font-size: 8px; margin-bottom: 2px; display: block;">Mock Latitude</label>
-            <input type="number" step="any" id="mock-lat" class="form-control" placeholder="e.g. 19.1135499" style="padding: 4px 8px; font-size: 11px;" />
-          </div>
-          <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 120px;">
-            <label style="font-size: 8px; margin-bottom: 2px; display: block;">Mock Longitude</label>
-            <input type="number" step="any" id="mock-lng" class="form-control" placeholder="e.g. 72.8665541" style="padding: 4px 8px; font-size: 11px;" />
-          </div>
-        </div>
-        <p style="font-size: 9.5px; color: var(--text2); margin: 0;">
-          Auto-fill center: 
-          <a href="#" onclick="fillMockCoords(19.1135499, 72.8665541); return false;" style="color:var(--primary); font-weight: 600; text-decoration: underline;">Mumbai</a> | 
-          <a href="#" onclick="fillMockCoords(12.9742787, 77.6157605); return false;" style="color:var(--primary); font-weight: 600; text-decoration: underline;">Bangalore</a> |
-          <a href="#" onclick="fillMockCoords(13.0245982, 75.8943748); return false;" style="color:var(--primary); font-weight: 600; text-decoration: underline;">Home (Alur)</a>
-        </p>
-      </div>
       
       <div id="active-visit-banner" class="hidden" style="background: rgba(108, 99, 255, 0.08); border: 1px solid rgba(108, 99, 255, 0.2); border-radius: var(--radius-sm); padding: 8px 12px; font-size: 11.5px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
         <div>
@@ -160,19 +137,6 @@ async function doCheckOut() {
 // ── Geolocation and Site Visits ──
 function getGPSLocation() {
   return new Promise((resolve, reject) => {
-    // Check if Mock GPS is enabled
-    const mockEnabled = document.getElementById('mock-gps-enable')?.checked;
-    if (mockEnabled) {
-      const lat = parseFloat(document.getElementById('mock-lat')?.value);
-      const lng = parseFloat(document.getElementById('mock-lng')?.value);
-      if (isNaN(lat) || isNaN(lng)) {
-        reject(new Error('Please enter valid numeric latitude and longitude for Mock GPS.'));
-        return;
-      }
-      resolve({ latitude: lat, longitude: lng, accuracy: 10.0 });
-      return;
-    }
-
     if (!navigator.geolocation) {
       reject(new Error('Geolocation is not supported by your browser.'));
       return;
@@ -205,26 +169,6 @@ function getGPSLocation() {
 
     tryGet(true);
   });
-}
-
-function toggleMockGPS() {
-  const isEnabled = document.getElementById('mock-gps-enable')?.checked;
-  const panel = document.getElementById('mock-gps-inputs');
-  if (isEnabled) {
-    panel?.classList.remove('hidden');
-    // Pre-fill Mumbai by default
-    fillMockCoords(19.1135499, 72.8665541);
-  } else {
-    panel?.classList.add('hidden');
-  }
-}
-
-function fillMockCoords(lat, lng) {
-  const latEl = document.getElementById('mock-lat');
-  const lngEl = document.getElementById('mock-lng');
-  if (latEl) latEl.value = lat;
-  if (lngEl) lngEl.value = lng;
-  toast(`Mock coordinates set to: ${lat.toFixed(4)}, ${lng.toFixed(4)}`, 'info');
 }
 
 async function doVisitCheckIn() {
