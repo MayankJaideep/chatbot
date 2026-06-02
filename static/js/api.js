@@ -51,6 +51,7 @@ const API = {
   getVisits: () => API.get('/api/employee/visits'),
   applyLeave: (d) => API.post('/api/employee/leave/apply', d),
   getLeaves: () => API.get('/api/employee/leave'),
+  getApprovedLeaves: () => API.get('/api/employee/leaves/approved'),
   getTasks: () => API.get('/api/employee/tasks'),
   updateTask: (id, d) => API.put(`/api/employee/tasks/${id}`, d),
   createTicket: (d) => API.post('/api/employee/ticket', d),

@@ -88,6 +88,8 @@ class Leave(db.Model):
     reviewed_on = db.Column(db.DateTime)
     admin_comment = db.Column(db.Text)
     via_chatbot = db.Column(db.Boolean, default=False)
+    attachment_name = db.Column(db.String(255))
+    attachment_data = db.Column(db.Text)
 
     reviewer = db.relationship('Employee', foreign_keys=[reviewed_by], lazy=True)
 
@@ -104,7 +106,9 @@ class Leave(db.Model):
             'status': self.status,
             'applied_on': self.applied_on.isoformat() + 'Z',
             'admin_comment': self.admin_comment,
-            'via_chatbot': self.via_chatbot
+            'via_chatbot': self.via_chatbot,
+            'attachment_name': self.attachment_name,
+            'attachment_data': self.attachment_data
         }
 
 

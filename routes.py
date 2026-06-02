@@ -227,7 +227,9 @@ def apply_leave():
         to_date=to_date,
         days=days,
         reason=data.get('reason', ''),
-        via_chatbot=data.get('via_chatbot', False)
+        via_chatbot=data.get('via_chatbot', False),
+        attachment_name=data.get('attachment_name'),
+        attachment_data=data.get('attachment_data')
     )
     db.session.add(leave)
     for admin in Employee.query.filter_by(role='admin').all():
@@ -240,6 +242,22 @@ def apply_leave():
 def get_leaves():
     leaves = Leave.query.filter_by(employee_id=g.current_user.id).order_by(Leave.applied_on.desc()).all()
     return jsonify({'leaves': [l.to_dict() for l in leaves]}), 200
+
+@employee_bp.route('/leaves/approved', methods=['GET'])
+@token_required
+def get_approved_leaves():
+    leaves = Leave.query.filter_by(status='approved').order_by(Leave.from_date).all()
+    records = []
+    for l in leaves:
+        records.append({
+            'id': l.id,
+            'employee_name': l.employee.name if l.employee else 'Unknown',
+            'leave_type': l.leave_type,
+            'from_date': l.from_date.isoformat(),
+            'to_date': l.to_date.isoformat(),
+            'days': l.days
+        })
+    return jsonify({'leaves': records}), 200
 
 @employee_bp.route('/tasks', methods=['GET'])
 @token_required

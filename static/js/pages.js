@@ -303,17 +303,55 @@ async function loadVisits() {
 }
 
 // ── Leave Page ──
+window.currentCalendarDate = new Date();
+window.cachedApprovedLeaves = [];
+window.leaveAttachment = { name: null, data: null };
+
 async function renderLeaves(el) {
   el.innerHTML = `
-    <div class="page-header"><div><h2>Leave Management</h2><p>Apply and track your leave requests</p></div><button class="btn btn-primary" onclick="showLeaveForm()"><i class="fa-solid fa-plus"></i> Apply Leave</button></div>
-    <div class="section-card"><div class="section-title"><i class="fa-solid fa-list"></i>My Leave Requests</div><div class="tbl-wrap" id="leave-table">Loading…</div></div>`;
-  await loadLeaves();
+    <div class="page-header">
+      <div>
+        <h2>Leave Management</h2>
+        <p>Apply and track your leave requests</p>
+      </div>
+      <button class="btn btn-primary" onclick="showLeaveForm()"><i class="fa-solid fa-plus"></i> Apply Leave</button>
+    </div>
+    
+    <div class="section-card">
+      <div class="section-title"><i class="fa-solid fa-list"></i>My Leave Requests</div>
+      <div class="tbl-wrap" id="leave-table">Loading…</div>
+    </div>
+
+    <div class="section-card" style="margin-top: 24px;">
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span><i class="fa-solid fa-calendar-days"></i> Team Out-of-Office Calendar</span>
+        <div class="calendar-nav" style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-sm btn-outline" id="cal-prev-btn" onclick="changeCalendarMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+          <span id="cal-month-title" style="font-weight:600; font-size:13px; min-width:120px; text-align:center;">—</span>
+          <button class="btn btn-sm btn-outline" id="cal-next-btn" onclick="changeCalendarMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+      </div>
+      <div id="calendar-grid-container" style="padding-top:12px;">Loading Calendar…</div>
+    </div>
+  `;
+
+  await Promise.all([
+    loadLeaves(),
+    loadApprovedLeavesAndRenderCalendar()
+  ]);
 }
 
 async function loadLeaves() {
   try {
     const d = await API.getLeaves();
-    const cards = d.leaves.map(l => `
+    const cards = d.leaves.map(l => {
+      const attachInfo = l.attachment_name 
+        ? `<div class="data-card-row">
+            <span class="data-card-label">Attachment</span>
+            <span class="data-card-value" style="color:var(--primary); font-weight:500;"><i class="fa-solid fa-paperclip"></i> ${l.attachment_name}</span>
+           </div>`
+        : '';
+      return `
       <div class="data-card">
         <div class="data-card-header">
           <span class="data-card-title">${badge(l.leave_type)}</span>
@@ -328,12 +366,14 @@ async function loadLeaves() {
             <span class="data-card-label">Reason</span>
             <span class="data-card-value" style="text-align:right;max-width:70%">${l.reason}</span>
           </div>
+          ${attachInfo}
           <div class="data-card-row">
             <span class="data-card-label">Applied On</span>
             <span class="data-card-value">${fmtDate(l.applied_on)}</span>
           </div>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     document.getElementById('leave-table').innerHTML = cards
       ? `<div class="card-list">${cards}</div>`
       : '<div class="empty-state" style="padding:24px"><i class="fa-solid fa-umbrella-beach"></i><p>No leave requests yet</p></div>';
@@ -341,6 +381,7 @@ async function loadLeaves() {
 }
 
 function showLeaveForm() {
+  window.leaveAttachment = { name: null, data: null };
   const ov = modal(`
     <div class="modal-header"><h3><i class="fa-solid fa-umbrella-beach" style="color:var(--primary)"></i> Apply for Leave</h3><button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="form-row">
@@ -351,14 +392,184 @@ function showLeaveForm() {
       <div class="form-group"><label>To Date</label><input type="date" class="form-control" id="lv-to" min="${new Date().toISOString().split('T')[0]}"/></div>
       <div class="form-group"><label>Reason</label><input type="text" class="form-control" id="lv-reason" placeholder="Brief reason"/></div>
     </div>
+    <div class="form-row" style="margin-top:8px;">
+      <div class="form-group" style="flex: 1 1 100%;">
+        <label>Attachment <span class="text-muted" style="font-weight:400;font-size:11px">(Optional - Image or PDF sick note)</span></label>
+        <div class="file-upload-wrapper" style="border: 2px dashed var(--border); padding: 16px; border-radius: 8px; text-align: center; background: rgba(0,0,0,0.01); cursor: pointer; position: relative; transition: border-color var(--transition);">
+          <input type="file" id="lv-file" accept="image/*,.pdf,.doc,.docx" onchange="handleLeaveFileChange(this)" style="position: absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer;" />
+          <div id="lv-file-label" style="font-size: 12.5px; color: var(--text2);">
+            <i class="fa-solid fa-cloud-arrow-up" style="font-size:24px; color:var(--primary); margin-bottom:8px; display:block;"></i>
+            Click to upload file (Max 2MB)
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="submitLeave()">Submit Request</button></div>`);
 }
 
+window.handleLeaveFileChange = function(input) {
+  const file = input.files[0];
+  if (!file) {
+    window.leaveAttachment = { name: null, data: null };
+    document.getElementById('lv-file-label').innerHTML = `<i class="fa-solid fa-cloud-arrow-up" style="font-size:24px; color:var(--primary); margin-bottom:8px; display:block;"></i>Click to upload file (Max 2MB)`;
+    return;
+  }
+  
+  if (file.size > 2 * 1024 * 1024) {
+    toast('File is too large. Max size is 2MB.', 'warning');
+    input.value = '';
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    window.leaveAttachment = {
+      name: file.name,
+      data: e.target.result
+    };
+    document.getElementById('lv-file-label').innerHTML = `<i class="fa-solid fa-file-circle-check" style="font-size:24px; color:var(--success); margin-bottom:8px; display:block;"></i><strong>${file.name}</strong> (${(file.size/1024).toFixed(1)} KB)`;
+    toast('File ready for upload', 'success');
+  };
+  reader.onerror = function() {
+    toast('Failed to read file', 'error');
+  };
+  reader.readAsDataURL(file);
+};
+
 async function submitLeave() {
-  const body = { leave_type: document.getElementById('lv-type').value, from_date: document.getElementById('lv-from').value, to_date: document.getElementById('lv-to').value, reason: document.getElementById('lv-reason').value };
+  const body = { 
+    leave_type: document.getElementById('lv-type').value, 
+    from_date: document.getElementById('lv-from').value, 
+    to_date: document.getElementById('lv-to').value, 
+    reason: document.getElementById('lv-reason').value 
+  };
   if (!body.from_date || !body.to_date || !body.reason) { toast('Please fill all fields', 'warning'); return; }
-  try { await API.applyLeave(body); closeModal(); toast('Leave applied!', 'success'); await loadLeaves(); }
+  
+  if (window.leaveAttachment && window.leaveAttachment.data) {
+    body.attachment_name = window.leaveAttachment.name;
+    body.attachment_data = window.leaveAttachment.data;
+  }
+
+  try { 
+    await API.applyLeave(body); 
+    closeModal(); 
+    toast('Leave applied!', 'success'); 
+    await loadLeaves(); 
+    await loadApprovedLeavesAndRenderCalendar();
+  }
   catch (e) { toast(e.message, 'error'); }
+}
+
+window.changeCalendarMonth = function(offset) {
+  if (!window.currentCalendarDate) {
+    window.currentCalendarDate = new Date();
+  }
+  window.currentCalendarDate.setMonth(window.currentCalendarDate.getMonth() + offset);
+  renderCalendarGrid();
+};
+
+async function loadApprovedLeavesAndRenderCalendar() {
+  try {
+    const res = await API.getApprovedLeaves();
+    window.cachedApprovedLeaves = res.leaves || [];
+    renderCalendarGrid();
+  } catch (e) {
+    console.error("Failed to load approved leaves:", e);
+    const container = document.getElementById('calendar-grid-container');
+    if (container) {
+      container.innerHTML = `<div style="padding:16px; text-align:center; color:var(--text3)">Error loading calendar: ${e.message}</div>`;
+    }
+  }
+}
+
+function renderCalendarGrid() {
+  const container = document.getElementById('calendar-grid-container');
+  const monthTitle = document.getElementById('cal-month-title');
+  if (!container || !monthTitle) return;
+
+  if (!window.currentCalendarDate) {
+    window.currentCalendarDate = new Date();
+  }
+
+  const year = window.currentCalendarDate.getFullYear();
+  const month = window.currentCalendarDate.getMonth();
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  monthTitle.innerText = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  let html = `<div style="display:grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow:hidden; background: var(--bg2);">`;
+
+  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  daysOfWeek.forEach(day => {
+    html += `<div style="background: var(--bg3); padding: 8px 4px; text-align: center; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 11px;">${day}</div>`;
+  });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div style="background: var(--bg); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-height: 80px;"></div>`;
+  }
+
+  const leaves = window.cachedApprovedLeaves || [];
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const isToday = isCurrentMonth && today.getDate() === day;
+    const cellDate = new Date(year, month, day);
+
+    const overlapping = leaves.filter(l => {
+      const from = new Date(l.from_date);
+      const to = new Date(l.to_date);
+      from.setHours(0,0,0,0);
+      to.setHours(0,0,0,0);
+      cellDate.setHours(0,0,0,0);
+      return cellDate >= from && cellDate <= to;
+    });
+
+    let dayStyle = `padding: 6px; min-height: 80px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); position: relative;`;
+    if (isToday) {
+      dayStyle += `background: rgba(37, 99, 235, 0.04);`;
+    }
+
+    html += `<div style="${dayStyle}">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+        <span style="font-size: 10px; font-weight: ${isToday ? '700' : '500'}; color: ${isToday ? 'var(--primary)' : 'var(--text)'}; background: ${isToday ? 'var(--primary-glow)' : 'transparent'}; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;">${day}</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:3px; max-height: 52px; overflow-y: auto;">`;
+
+    overlapping.forEach(l => {
+      let badgeStyle = `font-size: 9px; padding: 2px 4px; border-radius: 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; `;
+      const type = (l.leave_type || 'casual').toLowerCase();
+      if (type === 'sick') {
+        badgeStyle += `background: #fee2e2; color: #dc2626; border-left: 2.5px solid #dc2626;`;
+      } else if (type === 'casual') {
+        badgeStyle += `background: #fef3c7; color: #b45309; border-left: 2.5px solid #b45309;`;
+      } else if (type === 'annual') {
+        badgeStyle += `background: #ccfbf1; color: #0f766e; border-left: 2.5px solid #0f766e;`;
+      } else {
+        badgeStyle += `background: #dbeafe; color: #1d4ed8; border-left: 2.5px solid #1d4ed8;`;
+      }
+
+      const parts = l.employee_name.split(' ');
+      const shortName = parts[0] + (parts[1] ? ' ' + parts[1][0] + '.' : '');
+      const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+
+      html += `<div class="calendar-event-badge" style="${badgeStyle}" title="${l.employee_name} (${typeLabel} Leave: ${fmtDate(l.from_date)} to ${fmtDate(l.to_date)})">${shortName} (${typeLabel[0]})</div>`;
+    });
+
+    html += `</div></div>`;
+  }
+
+  const totalCells = firstDay + totalDays;
+  const trailingCells = (7 - (totalCells % 7)) % 7;
+  for (let i = 0; i < trailingCells; i++) {
+    html += `<div style="background: var(--bg); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-height: 80px;"></div>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
 }
 
 // ── Tasks Page ──

@@ -131,27 +131,269 @@ async function saveEmp(id) {
 }
 
 // ── Admin: Leaves ──
+window.currentAdminCalendarDate = new Date();
+window.cachedAdminApprovedLeaves = [];
+window.allAdminLeaves = [];
+
 async function renderAdminLeaves(el) {
-  el.innerHTML = `<div class="page-header"><div><h2>Leave Requests</h2></div><select class="form-control" style="width:140px" onchange="loadAdminLeaves(this.value)" id="lv-filter"><option value="">All</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div><div class="section-card"><div class="tbl-wrap" id="adm-leave-table">Loading…</div></div>`;
-  await loadAdminLeaves('');
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h2>Leave Requests</h2>
+      </div>
+      <select class="form-control" style="width:140px" onchange="loadAdminLeaves(this.value)" id="lv-filter">
+        <option value="">All</option>
+        <option value="pending">Pending</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+    
+    <div class="section-card">
+      <div class="tbl-wrap" id="adm-leave-table">Loading…</div>
+    </div>
+
+    <div class="section-card" style="margin-top: 24px;">
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span><i class="fa-solid fa-calendar-days"></i> Approved Leaves Calendar</span>
+        <div class="calendar-nav" style="display:flex; gap:8px; align-items:center;">
+          <button class="btn btn-sm btn-outline" id="adm-cal-prev-btn" onclick="changeAdminCalendarMonth(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+          <span id="adm-cal-month-title" style="font-weight:600; font-size:13px; min-width:120px; text-align:center;">—</span>
+          <button class="btn btn-sm btn-outline" id="adm-cal-next-btn" onclick="changeAdminCalendarMonth(1)"><i class="fa-solid fa-chevron-right"></i></button>
+        </div>
+      </div>
+      <div id="admin-calendar-grid-container" style="padding-top:12px;">Loading Calendar…</div>
+    </div>
+  `;
+
+  await Promise.all([
+    loadAdminLeaves(''),
+    loadApprovedLeavesAndRenderAdminCalendar()
+  ]);
 }
 
 async function loadAdminLeaves(status) {
   try {
     const d = await API.getAllLeaves(status);
-    const rows = d.leaves.map(l => `<tr>
-      <td><div style="font-weight:600">${l.employee_name}</div></td>
-      <td>${badge(l.leave_type)}</td><td>${fmtDate(l.from_date)}</td><td>${fmtDate(l.to_date)}</td><td>${l.days}</td><td>${l.reason}</td><td>${badge(l.status)}</td>
-      <td>${l.status === 'pending' ? `<div style="display:flex;gap:6px"><button class="btn btn-sm btn-success" onclick="reviewLeave(${l.id},'approve')">✓</button><button class="btn btn-sm btn-danger" onclick="reviewLeave(${l.id},'reject')">✗</button></div>` : '—'}</td>
-    </tr>`).join('');
-    document.getElementById('adm-leave-table').innerHTML = `<table><thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-center text-muted" style="padding:24px">No records</td></tr>'}</tbody></table>`;
+    window.allAdminLeaves = d.leaves || [];
+    const rows = window.allAdminLeaves.map(l => {
+      const attachBtn = l.attachment_name 
+        ? `<button class="btn btn-sm btn-outline" style="padding: 4px 8px; font-size: 11px; display:inline-flex; align-items:center; gap:4px;" onclick="viewLeaveAttachment(${l.id})"><i class="fa-solid fa-paperclip"></i> View</button>`
+        : '<span class="text-muted">—</span>';
+      
+      return `<tr>
+        <td><div style="font-weight:600">${l.employee_name}</div></td>
+        <td>${badge(l.leave_type)}</td>
+        <td>${fmtDate(l.from_date)}</td>
+        <td>${fmtDate(l.to_date)}</td>
+        <td>${l.days}</td>
+        <td>${l.reason}</td>
+        <td>${attachBtn}</td>
+        <td>${badge(l.status)}</td>
+        <td>${l.status === 'pending' ? `<div style="display:flex;gap:6px"><button class="btn btn-sm btn-success" onclick="reviewLeave(${l.id},'approve')" title="Approve">✓</button><button class="btn btn-sm btn-danger" onclick="reviewLeave(${l.id},'reject')" title="Reject">✗</button></div>` : '—'}</td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('adm-leave-table').innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Type</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Days</th>
+            <th>Reason</th>
+            <th>Attachment</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="9" class="text-center text-muted" style="padding:24px">No records</td></tr>'}
+        </tbody>
+      </table>`;
   } catch (e) { toast(e.message, 'error'); }
 }
 
 async function reviewLeave(id, action) {
   const comment = action === 'reject' ? prompt('Rejection reason (optional):') || '' : '';
-  try { await API.reviewLeave(id, { action, comment }); toast(`Leave ${action}d!`, action === 'approve' ? 'success' : 'warning'); await loadAdminLeaves(document.getElementById('lv-filter')?.value || ''); }
+  try { 
+    await API.reviewLeave(id, { action, comment }); 
+    toast(`Leave ${action}d!`, action === 'approve' ? 'success' : 'warning'); 
+    await loadAdminLeaves(document.getElementById('lv-filter')?.value || ''); 
+    await loadApprovedLeavesAndRenderAdminCalendar();
+  }
   catch (e) { toast(e.message, 'error'); }
+}
+
+window.viewLeaveAttachment = function(id) {
+  const leave = (window.allAdminLeaves || []).find(l => l.id === id);
+  if (!leave || !leave.attachment_data) {
+    toast('No attachment found', 'warning');
+    return;
+  }
+  
+  const filename = leave.attachment_name || 'attachment';
+  const data = leave.attachment_data;
+  
+  let contentHtml = '';
+  if (data.startsWith('data:image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(filename)) {
+    contentHtml = `<div style="text-align:center;"><img src="${data}" style="max-width:100%; max-height:60vh; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1); border:1px solid var(--border);" alt="${filename}"/></div>`;
+  } else if (data.startsWith('data:application/pdf') || filename.endsWith('.pdf')) {
+    contentHtml = `
+      <div style="text-align:center; padding: 16px 0;">
+        <i class="fa-solid fa-file-pdf" style="font-size: 56px; color: #ef4444; margin-bottom: 12px; display:block;"></i>
+        <p style="font-weight:600; margin-bottom: 16px; font-size:13px; color:var(--text);">${filename}</p>
+        <div style="display:flex; gap:12px; justify-content:center;">
+          <a class="btn btn-primary btn-sm" href="${data}" download="${filename}"><i class="fa-solid fa-download"></i> Download PDF</a>
+          <button class="btn btn-outline btn-sm" onclick="previewPdfInNewTab('${data}')"><i class="fa-solid fa-square-arrow-up-right"></i> Open PDF</button>
+        </div>
+      </div>
+    `;
+  } else {
+    contentHtml = `
+      <div style="text-align:center; padding: 16px 0;">
+        <i class="fa-solid fa-file-invoice" style="font-size: 56px; color: var(--primary); margin-bottom: 12px; display:block;"></i>
+        <p style="font-weight:600; margin-bottom: 16px; font-size:13px; color:var(--text);">${filename}</p>
+        <a class="btn btn-primary btn-sm" href="${data}" download="${filename}"><i class="fa-solid fa-download"></i> Download File</a>
+      </div>
+    `;
+  }
+  
+  modal(`
+    <div class="modal-header">
+      <h3><i class="fa-solid fa-paperclip" style="color:var(--primary)"></i> Attachment: ${filename}</h3>
+      <button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <div style="padding: 12px 0;">
+      ${contentHtml}
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal()">Close</button>
+    </div>
+  `);
+};
+
+window.previewPdfInNewTab = function(dataUrl) {
+  const win = window.open();
+  if (win) {
+    win.document.write(`<iframe src="${dataUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
+  } else {
+    toast('Popup blocked! Please allow popups or download the PDF.', 'warning');
+  }
+};
+
+window.changeAdminCalendarMonth = function(offset) {
+  if (!window.currentAdminCalendarDate) {
+    window.currentAdminCalendarDate = new Date();
+  }
+  window.currentAdminCalendarDate.setMonth(window.currentAdminCalendarDate.getMonth() + offset);
+  renderAdminCalendarGrid();
+};
+
+async function loadApprovedLeavesAndRenderAdminCalendar() {
+  try {
+    const res = await API.getApprovedLeaves();
+    window.cachedAdminApprovedLeaves = res.leaves || [];
+    renderAdminCalendarGrid();
+  } catch (e) {
+    console.error("Failed to load approved leaves:", e);
+    const container = document.getElementById('admin-calendar-grid-container');
+    if (container) {
+      container.innerHTML = `<div style="padding:16px; text-align:center; color:var(--text3)">Error loading calendar: ${e.message}</div>`;
+    }
+  }
+}
+
+function renderAdminCalendarGrid() {
+  const container = document.getElementById('admin-calendar-grid-container');
+  const monthTitle = document.getElementById('adm-cal-month-title');
+  if (!container || !monthTitle) return;
+
+  if (!window.currentAdminCalendarDate) {
+    window.currentAdminCalendarDate = new Date();
+  }
+
+  const year = window.currentAdminCalendarDate.getFullYear();
+  const month = window.currentAdminCalendarDate.getMonth();
+
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  monthTitle.innerText = `${monthNames[month]} ${year}`;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  let html = `<div style="display:grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--border); border-radius: var(--radius); overflow:hidden; background: var(--bg2);">`;
+
+  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  daysOfWeek.forEach(day => {
+    html += `<div style="background: var(--bg3); padding: 8px 4px; text-align: center; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 11px;">${day}</div>`;
+  });
+
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div style="background: var(--bg); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-height: 80px;"></div>`;
+  }
+
+  const leaves = window.cachedAdminApprovedLeaves || [];
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+
+  for (let day = 1; day <= totalDays; day++) {
+    const isToday = isCurrentMonth && today.getDate() === day;
+    const cellDate = new Date(year, month, day);
+
+    const overlapping = leaves.filter(l => {
+      const from = new Date(l.from_date);
+      const to = new Date(l.to_date);
+      from.setHours(0,0,0,0);
+      to.setHours(0,0,0,0);
+      cellDate.setHours(0,0,0,0);
+      return cellDate >= from && cellDate <= to;
+    });
+
+    let dayStyle = `padding: 6px; min-height: 80px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); position: relative;`;
+    if (isToday) {
+      dayStyle += `background: rgba(37, 99, 235, 0.04);`;
+    }
+
+    html += `<div style="${dayStyle}">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+        <span style="font-size: 10px; font-weight: ${isToday ? '700' : '500'}; color: ${isToday ? 'var(--primary)' : 'var(--text)'}; background: ${isToday ? 'var(--primary-glow)' : 'transparent'}; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;">${day}</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:3px; max-height: 52px; overflow-y: auto;">`;
+
+    overlapping.forEach(l => {
+      let badgeStyle = `font-size: 9px; padding: 2px 4px; border-radius: 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500; `;
+      const type = (l.leave_type || 'casual').toLowerCase();
+      if (type === 'sick') {
+        badgeStyle += `background: #fee2e2; color: #dc2626; border-left: 2.5px solid #dc2626;`;
+      } else if (type === 'casual') {
+        badgeStyle += `background: #fef3c7; color: #b45309; border-left: 2.5px solid #b45309;`;
+      } else if (type === 'annual') {
+        badgeStyle += `background: #ccfbf1; color: #0f766e; border-left: 2.5px solid #0f766e;`;
+      } else {
+        badgeStyle += `background: #dbeafe; color: #1d4ed8; border-left: 2.5px solid #1d4ed8;`;
+      }
+
+      const parts = l.employee_name.split(' ');
+      const shortName = parts[0] + (parts[1] ? ' ' + parts[1][0] + '.' : '');
+      const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+
+      html += `<div class="calendar-event-badge" style="${badgeStyle}" title="${l.employee_name} (${typeLabel} Leave: ${fmtDate(l.from_date)} to ${fmtDate(l.to_date)})">${shortName} (${typeLabel[0]})</div>`;
+    });
+
+    html += `</div></div>`;
+  }
+
+  const totalCells = firstDay + totalDays;
+  const trailingCells = (7 - (totalCells % 7)) % 7;
+  for (let i = 0; i < trailingCells; i++) {
+    html += `<div style="background: var(--bg); border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); min-height: 80px;"></div>`;
+  }
+
+  html += `</div>`;
+  container.innerHTML = html;
 }
 
 // ── Admin: Tickets ──
