@@ -1,26 +1,26 @@
 :root {
-  --bg: #0b0d13; 
-  --bg2: #111522; 
-  --bg3: #171d2f;
-  --card: #141929; 
-  --card2: #1b2237;
-  --border: rgba(255, 255, 255, 0.08);
-  --primary: #6c63ff; 
-  --primary-d: #5a52e0; 
-  --primary-glow: rgba(108, 99, 255, 0.25);
-  --accent: #00d4aa; 
-  --accent2: #f59e0b; 
-  --danger: #ef4444; 
-  --success: #10b981;
-  --text: #e8eaf6; 
-  --text2: #8892b0; 
-  --text3: #4a5568;
+  --bg: #f8fafc;           /* Crisp slate-light background */
+  --bg2: #ffffff;          /* Pure white panels / topbar */
+  --bg3: #f1f5f9;          /* Slightly darker slate for nested elements */
+  --card: #ffffff;         /* Pure white cards */
+  --card2: #f8fafc;        /* Secondary white cards */
+  --border: #e2e8f0;       /* Soft slate border */
+  --primary: #2563eb;      /* Professional enterprise cobalt blue */
+  --primary-d: #1d4ed8;    /* Corporate dark blue */
+  --primary-glow: rgba(37, 99, 235, 0.12);
+  --accent: #0f766e;       /* Elegant deep teal accent */
+  --accent2: #d97706;      /* Rich amber for warnings */
+  --danger: #dc2626;       /* Executive red */
+  --success: #16a34a;      /* Executive green */
+  --text: #0f172a;         /* Deep slate for titles & text */
+  --text2: #475569;        /* Medium slate for secondary text */
+  --text3: #94a3b8;        /* Soft gray-blue for icons/placeholders */
   --sidebar-w: 240px; 
   --topbar-h: 56px;
-  --radius: 16px; 
-  --radius-sm: 8px;
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius: 12px;          /* Sharp, modern professional rounded corners */
+  --radius-sm: 6px;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.03); /* Soft premium shadow system */
+  --transition: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 *, *::before, *::after {
@@ -72,7 +72,7 @@ input, textarea, select {
 /* ══ MOBILE CONTAINER FRAMEWORK (DESKTOP MODE) ══ */
 @media(min-width: 1025px) {
   body {
-    background: radial-gradient(circle at center, #1b2136 0%, #080a0f 100%);
+    background: radial-gradient(circle at center, #f1f5f9 0%, #cbd5e1 100%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -87,8 +87,8 @@ input, textarea, select {
     height: 90vh;
     max-height: 860px;
     margin: auto;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    box-shadow: 0 32px 80px rgba(0, 0, 0, 0.8), 0 0 0 10px rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    box-shadow: 0 32px 80px rgba(15, 23, 42, 0.15), 0 0 0 10px rgba(15, 23, 42, 0.02);
     border-radius: 40px;
     overflow: hidden;
     background: var(--bg);
