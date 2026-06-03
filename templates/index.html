@@ -119,10 +119,10 @@
         <i class="fa-solid fa-robot"></i><span>AI Assistant</span>
         <span class="badge-new">AI</span>
       </a>
-      <div class="nav-section-label">My Work</div>
-      <a href="#" class="nav-item" data-page="attendance" onclick="navigate('attendance')">
-        <i class="fa-solid fa-calendar-check"></i><span>Attendance</span>
+      <a href="#" class="nav-item" data-page="team-chat" onclick="navigate('team-chat')">
+        <i class="fa-solid fa-comments"></i><span>Team Chat</span>
       </a>
+      <div class="nav-section-label">My Work</div>
       <a href="#" class="nav-item" data-page="leaves" onclick="navigate('leaves')">
         <i class="fa-solid fa-umbrella-beach"></i><span>Leave</span>
       </a>
@@ -156,8 +156,51 @@
         <i class="fa-solid fa-gears"></i><span>Manage Sites</span>
       </a>
     </nav>
+
+    <!-- Profile Expand Card -->
+    <div id="profile-expand-card" class="profile-expand-card">
+      <div class="profile-card-header">
+        <h4>Employee Profile</h4>
+        <button class="btn-close-profile" onclick="toggleProfileExpand()"><i class="fa-solid fa-chevron-down"></i></button>
+      </div>
+      <div class="profile-card-body" style="display:flex; flex-direction:column; gap:12px;">
+        <div class="profile-photo-wrapper">
+          <img id="profile-photo-img" src="" alt="Profile Photo" class="hidden" />
+          <div id="profile-photo-placeholder" class="avatar-lg">J</div>
+          <div class="photo-upload-overlay" onclick="triggerPhotoUpload()">
+            <i class="fa-solid fa-camera"></i>
+            <span style="font-size: 8px;">Upload</span>
+          </div>
+          <input type="file" id="profile-photo-input" accept="image/*" style="display:none;" onchange="handleProfilePhotoUpload(this)" />
+        </div>
+        <div class="profile-details-form" style="display:flex; flex-direction:column; gap:8px;">
+          <div class="form-group-sm">
+            <label>Full Name</label>
+            <input type="text" id="profile-name" class="form-control-sm" placeholder="Your Name" />
+          </div>
+          <div class="form-group-sm">
+            <label>Phone Number</label>
+            <input type="text" id="profile-phone" class="form-control-sm" placeholder="Phone Number" />
+          </div>
+          <div class="form-group-sm" style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:4px 6px; border-radius:4px;">
+            <label style="margin-bottom:0;">Designation</label>
+            <span id="profile-desig-text" class="profile-static-text">—</span>
+          </div>
+          <div class="form-group-sm" style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:4px 6px; border-radius:4px;">
+            <label style="margin-bottom:0;">Department</label>
+            <span id="profile-dept-text" class="profile-static-text">—</span>
+          </div>
+          <div class="form-group-sm" style="display:flex; justify-content:space-between; align-items:center; background:rgba(0,0,0,0.02); padding:4px 6px; border-radius:4px;">
+            <label style="margin-bottom:0;">Manager</label>
+            <span id="profile-manager-text" class="profile-static-text">—</span>
+          </div>
+          <button class="btn btn-sm btn-primary btn-full mt-8" onclick="saveProfileChanges()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+
     <div class="sidebar-footer">
-      <div class="user-info-mini" id="sidebar-user">
+      <div class="user-info-mini" id="sidebar-user" onclick="toggleProfileExpand()" style="cursor: pointer;" title="Expand profile summary">
         <div class="avatar-sm" id="sidebar-avatar">J</div>
         <div>
           <div class="user-name-sm" id="sidebar-name">Loading…</div>
@@ -196,7 +239,7 @@
     <main class="page-container">
       <div id="page-dashboard" class="page active"></div>
       <div id="page-chat" class="page"></div>
-      <div id="page-attendance" class="page"></div>
+      <div id="page-team-chat" class="page"></div>
       <div id="page-leaves" class="page"></div>
       <div id="page-tasks" class="page"></div>
       <div id="page-tickets" class="page"></div>

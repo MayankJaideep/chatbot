@@ -27,6 +27,7 @@ SYSTEM_PROMPT = """You are ARIA (Automated Reasoning & Intelligence Assistant), 
 - Helpdesk tickets (IT, HR, Finance, Admin, Facilities) and viewing their tickets
 - Attendance (check-in / check-out) and viewing their attendance records
 - Task updates, task creation/assignment, and viewing their assigned tasks
+- Scheduling meetings, deadlines, and holidays on the calendar
 - General office queries
 
 Rules:
@@ -35,7 +36,8 @@ Rules:
 3. For LEAVE: collect leave_type → from_date → to_date → reason → then auto-submit.
 4. For TICKETS: collect category → subject → description → priority → then auto-submit.
 5. For TASKS: collect title → assignee_name → due_date → then auto-submit.
-6. Confirm each submitted form with a formatted summary.
+6. For CALENDAR EVENTS / MEETINGS: collect title → event_type → start_date → end_date → description → then auto-submit.
+7. Confirm each submitted form with a formatted summary.
 
 Today's date: {today}
 Employee: {name} | Dept: {department} | Leave Balance: {leave_balance} days
@@ -91,6 +93,24 @@ TOOLS = [
                     "priority": {"type": "string", "enum": ["low", "medium", "high", "urgent"], "default": "medium"}
                 },
                 "required": ["title", "assignee_name", "due_date"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_calendar_event",
+            "description": "Schedule a meeting, holiday, or deadline on the calendar when title, event_type, start_date, and end_date are all collected",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "The title of the meeting or event"},
+                    "event_type": {"type": "string", "enum": ["meeting", "deadline", "holiday"], "description": "The type of calendar event"},
+                    "start_date": {"type": "string", "description": "YYYY-MM-DD start date of the event"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD end date of the event"},
+                    "description": {"type": "string", "description": "Optional details/description of the event"}
+                },
+                "required": ["title", "event_type", "start_date", "end_date"]
             }
         }
     },
@@ -271,6 +291,49 @@ def _state_machine(message: str, employee, session_id: str, db) -> dict:
                 return {'reply': res['message'], 'action': 'task_created', 'intent': 'task'}
             return {'reply': "Task assignment cancelled. Let me know if you need anything else!", 'intent': 'general'}
 
+    # --- MEETING FLOW ---
+    if mode == 'meeting':
+        step = state.get('step', 'title')
+        if step == 'title':
+            state.update({'title': message, 'step': 'event_type'})
+            return {'reply': "Got it. What type of event is this? (meeting / deadline / holiday)", 'intent': 'meeting'}
+        
+        if step == 'event_type':
+            e_type = 'meeting'
+            if 'deadline' in t: e_type = 'deadline'
+            elif 'holiday' in t: e_type = 'holiday'
+            state.update({'event_type': e_type, 'step': 'start_date'})
+            return {'reply': f"Event type set to **{e_type.title()}**. What is the start date? (e.g. \"tomorrow\", \"20 May\")", 'intent': 'meeting'}
+            
+        if step == 'start_date':
+            parsed = _parse_date(message)
+            if not parsed:
+                return {'reply': "I didn't catch the start date. Please say something like \"tomorrow\" or \"20 May\".", 'intent': 'meeting'}
+            state.update({'start_date': parsed, 'step': 'end_date'})
+            return {'reply': f"Starts on **{parsed}**. What is the end date? (Reply \"same\" if it's a one-day event)", 'intent': 'meeting'}
+            
+        if step == 'end_date':
+            parsed = _parse_date(message)
+            if not parsed or 'same' in t or 'today' in t or 'tomorrow' in t:
+                parsed = state['start_date']
+            state.update({'end_date': parsed, 'step': 'confirm'})
+            summary = (
+                f"📋 **Calendar Event Summary**\n\n"
+                f"📌 **Title:** {state['title']}\n"
+                f"🏷️ **Type:** {state['event_type'].title()}\n"
+                f"📅 **Start Date:** {state['start_date']}\n"
+                f"📅 **End Date:** {state['end_date']}\n\n"
+                f"Shall I schedule this event? Reply **yes** to confirm or **no** to cancel."
+            )
+            return {'reply': summary, 'intent': 'meeting_confirm'}
+            
+        if step == 'confirm':
+            _clear_state(session_id)
+            if any(w in t for w in ['yes', 'confirm', 'ok', 'sure', 'submit', 'yeah', 'yep']):
+                res = _execute_calendar_event(state, employee, db)
+                return {'reply': res['message'], 'action': 'event_created', 'intent': 'meeting'}
+            return {'reply': "Event scheduling cancelled. Let me know if you need anything else!", 'intent': 'general'}
+
     # --- INTENT DETECTION (No Active Mode) ---
     # 1. Attendance Check-in & Check-out actions
     if any(w in t for w in ['check-in', 'punch-in', 'clock-in', 'sign-in']) or (any(x in t for x in ['check', 'punch', 'clock', 'sign']) and 'in' in t):
@@ -302,6 +365,11 @@ def _state_machine(message: str, employee, session_id: str, db) -> dict:
     if any(w in t for w in ['assign', 'create task', 'new task', 'add task', 'give task']):
         state.update({'mode': 'task', 'step': 'title'})
         return {'reply': "Sure! I can help you create and assign a task. What is the **title** of the task?", 'intent': 'task'}
+
+    # 4. Schedule calendar meeting intent
+    if any(w in t for w in ['schedule', 'meeting', 'calendar event', 'book a meeting', 'appointment']):
+        state.update({'mode': 'meeting', 'step': 'title'})
+        return {'reply': "Sure! I can help you schedule a calendar event or meeting. What is the **title** of the event?", 'intent': 'meeting'}
 
     # Leave application intent
     if any(w in t for w in ['leave', 'sick', 'vacation', 'day off', 'absent', 'holiday', 'not coming']):
@@ -377,6 +445,9 @@ def chat(message: str, employee, history: list, db, session_id: str = None) -> d
             elif fn_name == 'create_task':
                 result = _execute_task(args, employee, db)
                 return {'reply': result['message'], 'action': 'task_created', 'intent': 'task'}
+            elif fn_name == 'create_calendar_event':
+                result = _execute_calendar_event(args, employee, db)
+                return {'reply': result['message'], 'action': 'event_created', 'intent': 'meeting'}
             elif fn_name == 'check_in_attendance':
                 result = _execute_check_in(employee, db)
                 return {'reply': result['message'], 'action': 'checkin', 'intent': 'attendance'}
@@ -643,6 +714,92 @@ def _execute_view_tickets(employee) -> dict:
     except Exception as e:
         return {'success': False, 'message': f'❌ Failed to fetch tickets: {str(e)}'}
 
+def _execute_calendar_event(args: dict, employee, db) -> dict:
+    from models import CustomEvent, Notification
+    try:
+        title = args.get('title')
+        event_type = args.get('event_type', args.get('type', 'meeting'))
+        start_date_str = args.get('start_date', args.get('start')).replace(' ', 'T')
+        end_date_str = args.get('end_date', args.get('end')).replace(' ', 'T')
+        desc = args.get('description', '')
+        
+        # Check and extract start time
+        start_time_str = ""
+        if 'T' in start_date_str:
+            parts = start_date_str.split('T')
+            start_date_str = parts[0]
+            if len(parts) > 1 and parts[1]:
+                time_val = parts[1][:5]
+                try:
+                    dt = datetime.strptime(time_val, "%H:%M")
+                    start_time_str = dt.strftime("%I:%M %p")
+                except:
+                    pass
+
+        # Check and extract end time
+        end_time_str = ""
+        if 'T' in end_date_str:
+            parts = end_date_str.split('T')
+            end_date_str = parts[0]
+            if len(parts) > 1 and parts[1]:
+                time_val = parts[1][:5]
+                try:
+                    dt = datetime.strptime(time_val, "%H:%M")
+                    end_time_str = dt.strftime("%I:%M %p")
+                except:
+                    pass
+
+        # Format time display to append to description
+        time_formatted = ""
+        if start_time_str and end_time_str:
+            time_formatted = f"Time: {start_time_str} - {end_time_str}"
+        elif start_time_str:
+            time_formatted = f"Time: {start_time_str}"
+            
+        if time_formatted:
+            if desc:
+                desc = f"{time_formatted} | {desc}"
+            else:
+                desc = time_formatted
+        
+        start_date = datetime.strptime(start_date_str, '%Y-%m-%d').date()
+        end_date = datetime.strptime(end_date_str, '%Y-%m-%d').date()
+        
+        ev = CustomEvent(
+            employee_id=employee.id,
+            title=title,
+            event_type=event_type,
+            start_date=start_date,
+            end_date=end_date,
+            description=desc
+        )
+        db.session.add(ev)
+        
+        db.session.add(Notification(
+            employee_id=employee.id,
+            title='Calendar Event Scheduled',
+            message=f"Event '{title}' ({event_type.title()}) has been scheduled for {start_date.strftime('%d %b')}.",
+            type='info'
+        ))
+        db.session.commit()
+        
+        return {
+            'success': True,
+            'message': (
+                f"✅ **Calendar event scheduled!**\n\n"
+                f"📋 **Details:**\n"
+                f"📌 **Title:** {title}\n"
+                f"🏷️ **Type:** {event_type.title()}\n"
+                f"📅 **Start Date:** {start_date.strftime('%d %b %Y')}\n"
+                f"📅 **End Date:** {end_date.strftime('%d %b %Y')}\n"
+                f"📝 **Description:** {desc or 'No description'}\n\n"
+                f"The event has been added to your calendar and Today's Schedule widget."
+            )
+        }
+    except Exception as e:
+        db.session.rollback()
+        return {'success': False, 'message': f'❌ Failed to schedule calendar event: {str(e)}'}
+
 def execute_action(action_type: str, args: dict, employee, db) -> dict:
     if action_type == 'create_leave':
         return _execute_leave(args, employee, db)
@@ -650,6 +807,8 @@ def execute_action(action_type: str, args: dict, employee, db) -> dict:
         return _execute_ticket(args, employee, db)
     elif action_type == 'create_task':
         return _execute_task(args, employee, db)
+    elif action_type == 'create_calendar_event':
+        return _execute_calendar_event(args, employee, db)
     elif action_type == 'check_in':
         return _execute_check_in(employee, db)
     elif action_type == 'check_out':

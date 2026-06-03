@@ -33,15 +33,131 @@ function showApp() {
   const u = API.user;
   document.getElementById('sidebar-name').textContent = u.name;
   document.getElementById('sidebar-role').textContent = u.role;
-  document.getElementById('sidebar-avatar').textContent = u.name[0];
-  document.getElementById('topbar-avatar').textContent = u.name[0];
+  
+  // Populate expandable profile fields
+  document.getElementById('profile-name').value = u.name || '';
+  document.getElementById('profile-phone').value = u.phone || '';
+  document.getElementById('profile-desig-text').textContent = u.designation || 'Employee';
+  document.getElementById('profile-dept-text').textContent = u.department || 'General';
+  document.getElementById('profile-manager-text').textContent = u.manager_name || 'None';
+  
+  // Update user photo views
+  window.updateUserAvatars(u.photo_data);
+
   if (u.role === 'admin') {
     document.querySelectorAll('.admin-only').forEach(el => el.classList.remove('hidden'));
+  } else {
+    document.querySelectorAll('.admin-only').forEach(el => el.classList.add('hidden'));
   }
   navigate('dashboard');
   loadNotifications();
   if (!notifInterval) notifInterval = setInterval(loadNotifications, 30000);
 }
+
+// ── Profile Expand Handlers ──
+window.updateUserAvatars = function(photoData) {
+  const sbAvatar = document.getElementById('sidebar-avatar');
+  const tbAvatar = document.getElementById('topbar-avatar');
+  const pPlaceholder = document.getElementById('profile-photo-placeholder');
+  const pImg = document.getElementById('profile-photo-img');
+  
+  const initial = API.user ? API.user.name[0] : 'U';
+
+  if (photoData) {
+    const imgHtml = `<img src="${photoData}" style="width:100%; height:100%; object-fit:cover; border-radius:inherit;" />`;
+    if (sbAvatar) sbAvatar.innerHTML = imgHtml;
+    if (tbAvatar) tbAvatar.innerHTML = imgHtml;
+    if (pImg) {
+      pImg.src = photoData;
+      pImg.classList.remove('hidden');
+    }
+    if (pPlaceholder) pPlaceholder.classList.add('hidden');
+  } else {
+    if (sbAvatar) {
+      sbAvatar.innerHTML = '';
+      sbAvatar.textContent = initial;
+    }
+    if (tbAvatar) {
+      tbAvatar.innerHTML = '';
+      tbAvatar.textContent = initial;
+    }
+    if (pImg) {
+      pImg.src = '';
+      pImg.classList.add('hidden');
+    }
+    if (pPlaceholder) {
+      pPlaceholder.textContent = initial;
+      pPlaceholder.classList.remove('hidden');
+    }
+  }
+};
+
+window.toggleProfileExpand = function() {
+  const card = document.getElementById('profile-expand-card');
+  if (card) {
+    card.classList.toggle('active');
+  }
+};
+
+window.triggerPhotoUpload = function() {
+  const fileInput = document.getElementById('profile-photo-input');
+  if (fileInput) fileInput.click();
+};
+
+window.handleProfilePhotoUpload = function(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  if (file.size > 2 * 1024 * 1024) {
+    toast('File is too large. Max size is 2MB.', 'warning');
+    input.value = '';
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const photoData = e.target.result;
+    window.updateUserAvatars(photoData);
+    window.tempPhotoData = photoData;
+    toast('Photo selected. Click "Save Changes" to apply.', 'info');
+  };
+  reader.onerror = function() {
+    toast('Failed to read photo file', 'error');
+  };
+  reader.readAsDataURL(file);
+};
+
+window.saveProfileChanges = async function() {
+  const name = document.getElementById('profile-name').value.trim();
+  const phone = document.getElementById('profile-phone').value.trim();
+  
+  if (!name) {
+    toast('Name cannot be empty', 'warning');
+    return;
+  }
+
+  const body = { name, phone };
+  if (window.tempPhotoData) {
+    body.photo_data = window.tempPhotoData;
+  }
+
+  try {
+    const res = await API.updateProfile(body);
+    toast('Profile updated successfully!', 'success');
+    API.user = res.user;
+    
+    document.getElementById('sidebar-name').textContent = res.user.name;
+    document.getElementById('profile-name').value = res.user.name;
+    document.getElementById('profile-phone').value = res.user.phone || '';
+    
+    window.updateUserAvatars(res.user.photo_data);
+    window.tempPhotoData = null;
+    
+    setTimeout(window.toggleProfileExpand, 1000);
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+};
 
 // ── Login ──
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -133,12 +249,13 @@ function logout() {
   localStorage.removeItem('aria_token');
   API.token = null; API.user = null;
   clearInterval(notifInterval);
+  const card = document.getElementById('profile-expand-card');
+  if (card) card.classList.remove('active');
   showLogin();
 }
 
-// ── Navigation ──
 const PAGE_TITLES = {
-  dashboard: 'Dashboard', chat: 'AI Assistant', attendance: 'Attendance',
+  dashboard: 'Dashboard', chat: 'AI Assistant', 'team-chat': 'Team Chat',
   leaves: 'Leave Management', tasks: 'My Tasks', tickets: 'Helpdesk',
   'admin-dashboard': 'Analytics', employees: 'Employees',
   'admin-leaves': 'Leave Requests', 'admin-tickets': 'All Tickets', 'admin-tasks': 'Task Manager',
@@ -148,7 +265,7 @@ const PAGE_TITLES = {
 const PAGE_RENDERERS = {
   dashboard: renderDashboard,
   chat: renderChat,
-  attendance: renderAttendance,
+  'team-chat': renderTeamChat,
   leaves: renderLeaves,
   tasks: renderTasks,
   tickets: renderTickets,
@@ -162,6 +279,15 @@ const PAGE_RENDERERS = {
 };
 
 function navigate(page) {
+  if (page !== 'team-chat' && window.teamChatPollInterval) {
+    clearInterval(window.teamChatPollInterval);
+    window.teamChatPollInterval = null;
+  }
+  const isAdminPage = page.startsWith('admin-') || page === 'employees';
+  if (isAdminPage && API.user?.role !== 'admin') {
+    navigate('dashboard');
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));

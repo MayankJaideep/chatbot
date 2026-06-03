@@ -95,11 +95,12 @@ async function loadEmployees() {
       <td><div style="display:flex;align-items:center;gap:10px"><div class="avatar-sm" style="width:32px;height:32px;font-size:12px">${e.name[0]}</div><div><div style="font-weight:600">${e.name}</div><div class="text-muted" style="font-size:11px">${e.email}</div></div></div></td>
       <td><span class="badge badge-${e.employee_id.toLowerCase()}">${e.employee_id}</span></td>
       <td>${e.department}</td><td>${e.designation}</td>
+      <td>${e.manager_name || '<span class="text-muted">—</span>'}</td>
       <td>${badge(e.is_active ? 'active' : 'inactive')}</td>
       <td>${e.leave_balance}</td>
-      <td><button class="btn btn-sm btn-outline" onclick="editEmp(${e.id},'${e.name}',${e.leave_balance})">Edit</button></td>
+      <td><button class="btn btn-sm btn-outline" onclick="editEmp(${e.id},'${e.name}',${e.leave_balance},${e.manager_id || 'null'})">Edit</button></td>
     </tr>`).join('');
-    document.getElementById('emp-table').innerHTML = `<table><thead><tr><th>Employee</th><th>ID</th><th>Department</th><th>Designation</th><th>Status</th><th>Leave Bal.</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="7" class="text-center text-muted" style="padding:24px">No employees found</td></tr>'}</tbody></table>`;
+    document.getElementById('emp-table').innerHTML = `<table><thead><tr><th>Employee</th><th>ID</th><th>Department</th><th>Designation</th><th>Manager</th><th>Status</th><th>Leave Bal.</th><th>Action</th></tr></thead><tbody>${rows || '<tr><td colspan="8" class="text-center text-muted" style="padding:24px">No employees found</td></tr>'}</tbody></table>`;
   } catch (e) { toast(e.message, 'error'); }
 }
 
@@ -118,15 +119,46 @@ async function addEmployee() {
   catch (e) { toast(e.message, 'error'); }
 }
 
-function editEmp(id, name, bal) {
+async function editEmp(id, name, bal, managerId) {
+  let managers = [];
+  try {
+    const res = await API.getPotentialManagers();
+    managers = res.managers || [];
+  } catch (e) {
+    console.error("Failed to load potential managers:", e);
+  }
+  
+  const mOpts = managers.map(m => {
+    if (m.id === id) return '';
+    return `<option value="${m.id}" ${m.id === managerId ? 'selected' : ''}>${m.name} (${m.designation})</option>`;
+  }).join('');
+
   modal(`<div class="modal-header"><h3>Edit Employee</h3><button class="modal-close" onclick="closeModal()"><i class="fa-solid fa-xmark"></i></button></div>
     <div class="form-group"><label>Name</label><input class="form-control" id="ue-name" value="${name}"/></div>
     <div class="form-group"><label>Leave Balance</label><input class="form-control" id="ue-bal" type="number" value="${bal}"/></div>
+    <div class="form-group">
+      <label>Reporting Manager</label>
+      <select class="form-control" id="ue-manager">
+        <option value="null">— None (Fallback to Admins) —</option>
+        ${mOpts}
+      </select>
+    </div>
     <div class="modal-footer"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveEmp(${id})">Save</button></div>`);
 }
 
 async function saveEmp(id) {
-  try { await API.updateEmployee(id, { name: document.getElementById('ue-name').value, leave_balance: parseInt(document.getElementById('ue-bal').value) }); closeModal(); toast('Updated!', 'success'); await loadEmployees(); }
+  const managerVal = document.getElementById('ue-manager').value;
+  const managerId = managerVal === 'null' ? null : parseInt(managerVal);
+  try { 
+    await API.updateEmployee(id, { 
+      name: document.getElementById('ue-name').value, 
+      leave_balance: parseInt(document.getElementById('ue-bal').value),
+      manager_id: managerId
+    }); 
+    closeModal(); 
+    toast('Updated!', 'success'); 
+    await loadEmployees(); 
+  }
   catch (e) { toast(e.message, 'error'); }
 }
 
@@ -456,7 +488,15 @@ async function showCreateTask() {
 async function createTask() {
   const b = { title: document.getElementById('ct-title').value, description: document.getElementById('ct-desc').value, assigned_to: parseInt(document.getElementById('ct-emp').value) || null, priority: document.getElementById('ct-pri').value, due_date: document.getElementById('ct-due').value };
   if (!b.title) { toast('Title required', 'warning'); return; }
-  try { await API.createTask(b); closeModal(); toast('Task created!', 'success'); await loadAdminTasks(); }
+  try { 
+    const res = await API.createTask(b); 
+    closeModal(); 
+    if (res.warning) {
+      toast(res.warning, 'warning');
+    }
+    toast('Task created!', 'success'); 
+    await loadAdminTasks(); 
+  }
   catch (e) { toast(e.message, 'error'); }
 }
 

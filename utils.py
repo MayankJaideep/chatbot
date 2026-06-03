@@ -66,3 +66,25 @@ def add_notification(db, employee_id, title, message, ntype='info', link=None):
     n = Notification(employee_id=employee_id, title=title, message=message, type=ntype, link=link)
     db.session.add(n)
     db.session.commit()
+
+def check_employee_ooo(db, employee_id, target_date):
+    """
+    Checks if an employee has an approved leave on the given target_date.
+    Returns the Leave object if they are OOO, otherwise None.
+    """
+    from models import Leave
+    if not target_date:
+        return None
+    if isinstance(target_date, str):
+        try:
+            from datetime import datetime
+            target_date = datetime.strptime(target_date, '%Y-%m-%d').date()
+        except ValueError:
+            return None
+    ooo_leave = Leave.query.filter(
+        Leave.employee_id == employee_id,
+        Leave.status == 'approved',
+        Leave.from_date <= target_date,
+        Leave.to_date >= target_date
+    ).first()
+    return ooo_leave

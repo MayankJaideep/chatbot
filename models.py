@@ -18,6 +18,8 @@ class Employee(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     leave_balance = db.Column(db.Integer, default=15)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    manager_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True)
+    photo_data = db.Column(db.Text, nullable=True)
 
     attendances = db.relationship('Attendance', backref='employee', lazy=True, foreign_keys='Attendance.employee_id')
     leaves = db.relationship('Leave', backref='employee', lazy=True, foreign_keys='Leave.employee_id')
@@ -26,6 +28,7 @@ class Employee(db.Model):
     notifications = db.relationship('Notification', backref='employee', lazy=True, foreign_keys='Notification.employee_id')
     chat_history = db.relationship('ChatHistory', backref='employee', lazy=True, foreign_keys='ChatHistory.employee_id')
     client_visits = db.relationship('ClientVisit', backref='employee', lazy=True, foreign_keys='ClientVisit.employee_id')
+    subordinates = db.relationship('Employee', backref=db.backref('manager', remote_side=[id]), lazy=True, foreign_keys=[manager_id])
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -45,6 +48,9 @@ class Employee(db.Model):
             'role': self.role,
             'is_active': self.is_active,
             'leave_balance': self.leave_balance,
+            'manager_id': self.manager_id,
+            'manager_name': self.manager.name if self.manager else None,
+            'photo_data': self.photo_data,
             'created_at': self.created_at.isoformat() + 'Z'
         }
 
@@ -312,6 +318,56 @@ class SiteAttendance(db.Model):
             'check_out_time': self.check_out_time.isoformat() + 'Z' if self.check_out_time else None,
             'hours_at_location': round((self.check_out_time - self.check_in_time).total_seconds() / 3600, 2) if self.check_out_time else None,
             'status': self.status
+        }
+
+class CustomEvent(db.Model):
+    __tablename__ = 'custom_events'
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    title = db.Column(db.String(200), nullable=False)
+    event_type = db.Column(db.String(50), nullable=False)  # 'leave', 'holiday', 'meeting', 'deadline'
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    description = db.Column(db.Text)
+
+    employee = db.relationship('Employee', backref=db.backref('custom_events', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'employee_id': self.employee_id,
+            'employee_name': self.employee.name if self.employee else None,
+            'title': self.title,
+            'type': self.event_type,
+            'start': self.start_date.isoformat(),
+            'end': self.end_date.isoformat(),
+            'description': self.description
+        }
+
+class TeamMessage(db.Model):
+    __tablename__ = 'team_messages'
+    id = db.Column(db.Integer, primary_key=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    receiver_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=True)  # NULL means group chat (or channel)
+    message = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    attachment_name = db.Column(db.String(255))
+    attachment_data = db.Column(db.Text) # Base64 attachment data
+
+    sender = db.relationship('Employee', foreign_keys=[sender_id], backref=db.backref('sent_team_messages', lazy=True))
+    receiver = db.relationship('Employee', foreign_keys=[receiver_id], backref=db.backref('received_team_messages', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'sender_id': self.sender_id,
+            'sender_name': self.sender.name if self.sender else 'System',
+            'sender_photo': self.sender.photo_data if self.sender else None,
+            'receiver_id': self.receiver_id,
+            'message': self.message,
+            'timestamp': self.timestamp.isoformat() + 'Z',
+            'attachment_name': self.attachment_name,
+            'attachment_data': self.attachment_data
         }
 
 

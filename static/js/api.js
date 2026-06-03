@@ -86,4 +86,12 @@ const API = {
   // Chat
   sendMsg: (msg, sid) => API.post('/api/chat/message', { message: msg, session_id: sid }),
   getChatHistory: (sid) => API.get('/api/chat/history' + (sid ? `?session_id=${sid}` : '')),
+  getCalendarEvents: () => API.get('/api/employee/calendar/events'),
+  getPotentialManagers: () => API.get('/api/employee/managers'),
+  updateProfile: (d) => API.put('/api/employee/profile', d),
+  createCustomEvent: (d) => API.post('/api/employee/calendar/custom-events', d),
+  deleteCustomEvent: (id) => API.del(`/api/employee/calendar/custom-events/${id}`),
+  getTeamChatUsers: () => API.get('/api/employee/team-chat/users'),
+  getTeamChatMessages: (userId) => API.get('/api/employee/team-chat/messages' + (userId ? `?user_id=${userId}` : '')),
+  sendTeamChatMessage: (body) => API.post('/api/employee/team-chat/messages', body),
 };
