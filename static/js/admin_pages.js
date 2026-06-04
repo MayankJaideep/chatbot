@@ -1,22 +1,134 @@
 // ── Admin Pages ──
 
 async function renderAdminDashboard(el) {
-  el.innerHTML = `<div class="page-header"><div><h2>Analytics Dashboard</h2><p>Company-wide overview</p></div></div><div class="stat-grid" id="adm-stats"></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-    <div class="section-card"><div class="section-title"><i class="fa-solid fa-chart-line"></i>Attendance (7 Days)</div><canvas id="att-chart" height="180"></canvas></div>
-    <div class="section-card"><div class="section-title"><i class="fa-solid fa-chart-pie"></i>Leave Status</div><canvas id="leave-chart" height="180"></canvas></div>
-  </div>`;
+  el.innerHTML = `
+    <div class="page-header">
+      <div>
+        <h2>Analytics Dashboard</h2>
+        <p>Company-wide overview & real-time analytics</p>
+      </div>
+    </div>
+    <div class="stat-grid" id="adm-stats"></div>
+    <div class="admin-dashboard-grid" style="display:grid; grid-template-columns: 1fr; gap:16px; margin-top:16px;">
+      <div style="display:flex; flex-direction:column; gap:16px;">
+        <div class="section-card">
+          <div class="section-title"><i class="fa-solid fa-ticket" style="color:var(--primary); margin-right:8px;"></i>Helpdesk Tickets Load by Category</div>
+          <canvas id="ticket-chart" height="180"></canvas>
+        </div>
+        <div class="section-card">
+          <div class="section-title"><i class="fa-solid fa-chart-pie" style="color:var(--warning); margin-right:8px;"></i>Leave Status Distribution</div>
+          <canvas id="leave-chart" height="180"></canvas>
+        </div>
+      </div>
+      <div class="section-card" style="display:flex; flex-direction:column; min-height:430px;">
+        <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:10px; margin-bottom:12px;">
+          <span>
+            <span class="live-dot" style="display:inline-block; width:8px; height:8px; background:var(--success); border-radius:50%; margin-right:8px; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); animation: pulse-green 1.5s infinite;"></span>
+            <strong>Employees On Duty</strong>
+          </span>
+          <span class="badge badge-success" id="on-duty-count" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(34, 197, 94, 0.1); color:var(--success); font-weight:600;">0 Online</span>
+        </div>
+        <div id="on-duty-list" style="display:flex; flex-direction:column; gap:10px; overflow-y:auto; flex-grow:1; max-height:360px; padding-right:4px;">
+          <div style="padding:24px; text-align:center; color:var(--text3);">Loading active sessions…</div>
+        </div>
+      </div>
+    </div>
+    <style>
+      @keyframes pulse-green {
+        0% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        }
+        70% {
+          transform: scale(1);
+          box-shadow: 0 0 0 6px rgba(34, 197, 94, 0);
+        }
+        100% {
+          transform: scale(0.95);
+          box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        }
+      }
+      @media(min-width: 1025px) {
+        .admin-dashboard-grid {
+          grid-template-columns: 1.1fr 0.9fr !important;
+        }
+      }
+    </style>
+  `;
+
   try {
     const d = await API.adminDashboard();
+    
+    // Render Stats Row
     document.getElementById('adm-stats').innerHTML = `
       <div class="stat-card"><div class="stat-icon si-purple"><i class="fa-solid fa-users"></i></div><div class="stat-info"><div class="stat-val">${d.total_employees}</div><div class="stat-label">Total Employees</div></div></div>
-      <div class="stat-card"><div class="stat-icon si-teal"><i class="fa-solid fa-calendar-check"></i></div><div class="stat-info"><div class="stat-val">${d.present_today}</div><div class="stat-label">Present Today</div></div></div>
+      <div class="stat-card"><div class="stat-icon si-teal"><i class="fa-solid fa-building-user"></i></div><div class="stat-info"><div class="stat-val">${d.present_today}</div><div class="stat-label">On Duty Today</div></div></div>
       <div class="stat-card"><div class="stat-icon si-amber"><i class="fa-solid fa-file-circle-check"></i></div><div class="stat-info"><div class="stat-val">${d.pending_leaves}</div><div class="stat-label">Pending Leaves</div></div></div>
       <div class="stat-card"><div class="stat-icon si-red"><i class="fa-solid fa-ticket"></i></div><div class="stat-info"><div class="stat-val">${d.open_tickets}</div><div class="stat-label">Open Tickets</div></div></div>
       <div class="stat-card"><div class="stat-icon si-green"><i class="fa-solid fa-list-check"></i></div><div class="stat-info"><div class="stat-val">${d.pending_tasks}</div><div class="stat-label">Pending Tasks</div></div></div>`;
-    drawBarChart('att-chart', d.attendance_chart.map(a => a.date.slice(5)), d.attendance_chart.map(a => a.count));
+    
+    // Draw Helpdesk Tickets by Category
+    const categories = ['IT', 'HR', 'Finance', 'Facilities'];
+    const counts = categories.map(cat => d.ticket_stats[cat] || 0);
+    drawBarChart('ticket-chart', categories, counts);
+    
+    // Draw Leave Distribution
     drawDonut('leave-chart', ['Approved', 'Rejected', 'Pending'], [d.leave_stats.approved, d.leave_stats.rejected, d.leave_stats.pending]);
-  } catch (e) { toast(e.message, 'error'); }
+    
+    // Render Employees On Duty
+    const activeCheckins = d.active_checkins || [];
+    document.getElementById('on-duty-count').innerText = `${activeCheckins.length} Online`;
+    
+    const listEl = document.getElementById('on-duty-list');
+    if (activeCheckins.length === 0) {
+      listEl.innerHTML = `
+        <div style="margin:auto; text-align:center; padding:40px 20px; color:var(--text3);">
+          <i class="fa-solid fa-user-slash" style="font-size:36px; margin-bottom:12px; opacity:0.5; color:var(--text3);"></i>
+          <div style="font-size:13px; font-weight:500;">No employees are currently checked in.</div>
+          <div style="font-size:11px; margin-top:4px;">All members are offline or off duty.</div>
+        </div>
+      `;
+    } else {
+      let listHtml = '';
+      activeCheckins.forEach(c => {
+        const checkInTime = new Date(c.check_in_time);
+        const diffMs = new Date() - checkInTime;
+        const diffHrs = Math.max(0, Math.floor(diffMs / 3600000));
+        const diffMins = Math.max(0, Math.floor((diffMs % 3600000) / 60000));
+        
+        let timeElapsedStr = '';
+        if (diffHrs > 0) {
+          timeElapsedStr = `${diffHrs}h ${diffMins}m elapsed`;
+        } else {
+          timeElapsedStr = `${diffMins}m elapsed`;
+        }
+
+        const initial = c.employee_name ? c.employee_name[0] : 'E';
+        
+        listHtml += `
+          <div class="on-duty-card" style="display:flex; align-items:center; justify-content:space-between; padding:12px; border:1px solid var(--border); border-radius:8px; background:var(--bg2); transition:all 0.2s ease;">
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div class="avatar-sm" style="width:36px; height:36px; background:var(--primary-glow); color:var(--primary); font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; border-radius:50%;">${initial}</div>
+              <div>
+                <div style="font-weight:600; font-size:13px; color:var(--text);">${c.employee_name}</div>
+                <div style="font-size:11px; color:var(--text3); display:flex; align-items:center; gap:4px; margin-top:2px;">
+                  <i class="fa-solid fa-map-location-dot" style="font-size:10px; color:var(--primary);"></i>
+                  Checked in at <strong style="color:var(--text2); font-weight:600;">${c.site_name}</strong>
+                </div>
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span class="badge badge-success" style="font-size:9.5px; padding:2px 6px; border-radius:4px; font-weight:600; background:rgba(34, 197, 94, 0.1); color:var(--success);"><i class="fa-solid fa-clock"></i> Active</span>
+              <div style="font-size:10px; color:var(--text3); margin-top:4px;">${timeElapsedStr}</div>
+            </div>
+          </div>
+        `;
+      });
+      listEl.innerHTML = listHtml;
+    }
+  } catch (e) {
+    toast(e.message, 'error');
+  }
 }
 
 function drawBarChart(id, labels, data) {

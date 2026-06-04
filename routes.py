@@ -394,9 +394,29 @@ def admin_dashboard():
     approved = sum(1 for l in month_leaves if l.status == 'approved')
     rejected = sum(1 for l in month_leaves if l.status == 'rejected')
 
-    att_chart = [{'date': (today - timedelta(days=i)).isoformat(),
-                  'count': Attendance.query.filter_by(date=today - timedelta(days=i), status='present').count()}
-                 for i in range(6, -1, -1)]
+    # Helpdesk tickets category stats
+    categories = ['IT', 'HR', 'Finance', 'Facilities']
+    ticket_counts = {}
+    for cat in categories:
+        ticket_counts[cat] = Ticket.query.filter_by(category=cat).count()
+
+    # Task status stats
+    task_stats = {
+        'completed': Task.query.filter_by(status='completed').count(),
+        'pending': Task.query.filter_by(status='pending').count(),
+        'in_progress': Task.query.filter_by(status='in_progress').count()
+    }
+
+    # Retrieve currently active geofenced check-ins (On Duty)
+    active_site_visits = SiteAttendance.query.filter_by(status='checked_in').all()
+    active_checkins = []
+    for visit in active_site_visits:
+        active_checkins.append({
+            'id': visit.id,
+            'employee_name': visit.employee.name if visit.employee else 'Unknown',
+            'site_name': visit.site.site_name if visit.site else 'Site',
+            'check_in_time': visit.check_in_time.isoformat() + 'Z'
+        })
 
     return jsonify({
         'total_employees': total_emp,
@@ -405,7 +425,9 @@ def admin_dashboard():
         'open_tickets': open_tickets,
         'pending_tasks': pending_tasks,
         'leave_stats': {'approved': approved, 'rejected': rejected, 'pending': pending_leaves},
-        'attendance_chart': att_chart
+        'ticket_stats': ticket_counts,
+        'task_stats': task_stats,
+        'active_checkins': active_checkins
     }), 200
 
 @admin_bp.route('/employees', methods=['GET', 'POST'])
