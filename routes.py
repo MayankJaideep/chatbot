@@ -988,6 +988,22 @@ def register_routes(app):
             status='checked_in'
         )
         db.session.add(record)
+        
+        # Sync with Daily Attendance (so admin dashboard count and charts are correct)
+        today = date.today()
+        daily_att = Attendance.query.filter_by(employee_id=g.current_user.id, date=today).first()
+        if not daily_att:
+            daily_att = Attendance(
+                employee_id=g.current_user.id,
+                date=today,
+                check_in=datetime.utcnow(),
+                status='present'
+            )
+            db.session.add(daily_att)
+        elif not daily_att.check_in:
+            daily_att.check_in = datetime.utcnow()
+            daily_att.status = 'present'
+            
         db.session.commit()
         return jsonify({"message": "Check-in successful", "record": record.to_dict()}), 200
 
@@ -1026,5 +1042,13 @@ def register_routes(app):
         record.check_out_lat = user_lat
         record.check_out_lng = user_lng
         record.status = 'checked_out'
+        
+        # Sync with Daily Attendance (calculating daily hours)
+        today = date.today()
+        daily_att = Attendance.query.filter_by(employee_id=g.current_user.id, date=today).first()
+        if daily_att and daily_att.check_in:
+            daily_att.check_out = datetime.utcnow()
+            daily_att.hours_worked = round((daily_att.check_out - daily_att.check_in).total_seconds() / 3600, 2)
+            
         db.session.commit()
         return jsonify({"message": "Check-out successful", "record": record.to_dict()}), 200
