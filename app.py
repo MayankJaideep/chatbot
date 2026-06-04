@@ -109,8 +109,8 @@ if __name__ == '__main__':
             home_site = Site(
                 site_name='Home',
                 client_name='Home Office',
-                latitude=13.024598243384572,
-                longitude=75.89437485546095,
+                latitude=12.992532774515434,
+                longitude=77.6955486081464,
                 radius_meters=150.0,
                 active=True
             )
